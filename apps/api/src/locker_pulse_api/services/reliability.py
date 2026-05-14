@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -29,8 +30,10 @@ class ReliabilityService:
         name: str,
         days: int = 7,
     ) -> ReliabilitySummary:
-        snapshots = await self._snapshots(country=country, name=name, days=days)
-        events = await self._events(country=country, name=name, days=days)
+        snapshots, events = await asyncio.gather(
+            self._snapshots(country=country, name=name, days=days),
+            self._events(country=country, name=name, days=days),
+        )
         return build_reliability_summary(snapshots=snapshots, events=events)
 
     async def get_history(
@@ -40,8 +43,10 @@ class ReliabilityService:
         name: str,
         days: int = 7,
     ) -> PointHistoryResponse:
-        snapshots = await self._snapshots(country=country, name=name, days=days)
-        events = await self._events(country=country, name=name, days=days)
+        snapshots, events = await asyncio.gather(
+            self._snapshots(country=country, name=name, days=days),
+            self._events(country=country, name=name, days=days),
+        )
         reliability = build_reliability_summary(snapshots=snapshots, events=events)
         return PointHistoryResponse(
             country=country,

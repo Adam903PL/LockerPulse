@@ -1,3 +1,4 @@
+import asyncio
 from math import atan2, cos, radians, sin, sqrt
 from time import perf_counter
 from typing import Any
@@ -140,17 +141,17 @@ class PointService:
         radius_m: int = 50_000,
     ) -> PointSummary:
         cached_point = await self._point_repository.get_point_record(country=country, name=name)
+        if cached_point is not None and not _is_legacy_seeded_point(cached_point):
+            return await self._summary_from_cached_record(
+                cached_point,
+                lat=lat,
+                lng=lng,
+                radius_m=radius_m,
+            )
 
         try:
             point = await self._inpost_client.get_point(country=country, name=name)
         except InPostApiError:
-            if cached_point is not None and not _is_legacy_seeded_point(cached_point):
-                return await self._summary_from_cached_record(
-                    cached_point,
-                    lat=lat,
-                    lng=lng,
-                    radius_m=radius_m,
-                )
             raise
 
         if lat is not None and lng is not None:
@@ -185,7 +186,7 @@ class PointService:
             lat=lat,
             lng=lng,
             radius_m=radius_m,
-            limit=max(20, limit * 8),
+            limit=max(8, limit * 3),
         )
         alternatives = select_alternatives(point, candidates, limit=limit)
         risk = point.risk or classify_point_risk(point)
@@ -204,26 +205,31 @@ class PointService:
         lat: float | None,
         lng: float | None,
         radius_m: int,
+        include_signals: bool = True,
     ) -> PointSummary:
         point = _record_to_point(record)
         if lat is not None and lng is not None:
             point = {**point, "distance": _distance_from_reference(point, lat=lat, lng=lng)}
         summary = _to_point_summary(point, functions=[], radius_m=radius_m)
+        if not include_signals:
+            return summary.model_copy(update={"risk": classify_point_risk(summary)})
         return await self._apply_reliability_to_item(summary)
 
     async def _apply_reliability(self, items: list[PointSummary]) -> list[PointSummary]:
-        return [await self._apply_reliability_to_item(item) for item in items]
+        return list(await asyncio.gather(*(self._apply_reliability_to_item(item) for item in items)))
 
     async def _apply_reliability_to_item(self, item: PointSummary) -> PointSummary:
-        reliability = await self._reliability_service.get_summary(
-            country=item.country,
-            name=item.name,
-            days=7,
-        )
-        report_summary = await self._report_service.get_summary(
-            country=item.country,
-            name=item.name,
-            days=7,
+        reliability, report_summary = await asyncio.gather(
+            self._reliability_service.get_summary(
+                country=item.country,
+                name=item.name,
+                days=7,
+            ),
+            self._report_service.get_summary(
+                country=item.country,
+                name=item.name,
+                days=7,
+            ),
         )
         adjustment = reliability_adjustment(reliability)
         score_adjustment = adjustment.adjustment
@@ -267,7 +273,49 @@ class PointService:
         radius_m: int,
         limit: int,
     ) -> list[PointSummary]:
-        raw_items: list[dict[str, Any]] = []
+        candidate_map: dict[str, PointSummary] = {}
+        cached_records = await self._point_repository.get_points_near(
+            country=country,
+            lat=lat,
+            lng=lng,
+            radius_m=radius_m,
+            limit=max(limit, 24),
+        )
+        cached_records = sorted(
+            cached_records,
+            key=lambda record: _record_distance_m(record, lat=lat, lng=lng) or 10**9,
+        )[:limit]
+        cached_base_summaries = [
+            await self._summary_from_cached_record(
+                record,
+                lat=lat,
+                lng=lng,
+                radius_m=radius_m,
+                include_signals=False,
+            )
+            for record in cached_records
+            if not _is_legacy_seeded_point(record)
+        ]
+        cached_base_summaries = [
+            item
+            for item in cached_base_summaries
+            if item.distance_m is not None and item.distance_m <= radius_m
+        ]
+        cached_base_summaries = sorted(
+            cached_base_summaries,
+            key=lambda item: (
+                -item.score,
+                item.distance_m if item.distance_m is not None else 10**9,
+            ),
+        )[: max(6, limit)]
+        cached_summaries = await self._apply_reliability(cached_base_summaries)
+        for item in cached_summaries:
+            if item.distance_m is not None and item.distance_m <= radius_m:
+                candidate_map[item.id] = item
+
+        if len(candidate_map) >= min(limit, 6):
+            return list(candidate_map.values())
+
         try:
             payload = await self._inpost_client.search_points(
                 lat=lat,
@@ -283,36 +331,14 @@ class PointService:
                 record_snapshots=True,
                 radius_m=radius_m,
             )
-        except InPostApiError:
-            raw_items = []
-
-        candidate_map: dict[str, PointSummary] = {}
-        live_summaries = [
-            _to_point_summary(_with_distance(item, lat=lat, lng=lng), functions=[], radius_m=radius_m)
-            for item in raw_items
-        ]
-        for item in await self._apply_reliability(live_summaries):
-            candidate_map[item.id] = item
-
-        cached_records = await self._point_repository.get_points_near(
-            country=country,
-            lat=lat,
-            lng=lng,
-            radius_m=radius_m,
-        )
-        cached_summaries = [
-            await self._summary_from_cached_record(
-                record,
-                lat=lat,
-                lng=lng,
-                radius_m=radius_m,
-            )
-            for record in cached_records
-            if not _is_legacy_seeded_point(record)
-        ]
-        for item in cached_summaries:
-            if item.distance_m is not None and item.distance_m <= radius_m:
+            live_summaries = [
+                _to_point_summary(_with_distance(item, lat=lat, lng=lng), functions=[], radius_m=radius_m)
+                for item in raw_items
+            ]
+            for item in await self._apply_reliability(live_summaries):
                 candidate_map[item.id] = item
+        except InPostApiError:
+            pass
 
         return list(candidate_map.values())
 
@@ -452,6 +478,10 @@ def _problem_reasons(report_summary: Any) -> list[str]:
 def _is_legacy_seeded_point(record: Any | None) -> bool:
     raw = _raw_from_record(record)
     return bool(raw and raw.get("demo_history") is True)
+
+
+def _record_distance_m(record: Any, *, lat: float, lng: float) -> int | None:
+    return _distance_from_reference(_record_to_point(record), lat=lat, lng=lng)
 
 
 def _record_to_point(record: Any) -> dict[str, Any]:

@@ -243,6 +243,7 @@ API service variables:
 ```env
 DATABASE_URL="${{Postgres.DATABASE_URL}}"
 WEB_ORIGIN="https://<web-domain>"
+RUN_DB_PUSH_ON_START="true"
 INPOST_API_BASE_URL="https://api-global-points.easypack24.net/v1"
 INPOST_REQUEST_TIMEOUT_SECONDS="10"
 NOMINATIM_API_BASE_URL="https://nominatim.openstreetmap.org"
@@ -261,7 +262,7 @@ NEXT_PUBLIC_API_BASE_URL="https://<api-domain>"
 
 After Railway generates the web domain, update `WEB_ORIGIN` on the API service. After Railway generates the API domain, update `NEXT_PUBLIC_API_BASE_URL` on the web service and redeploy the web service because `NEXT_PUBLIC_*` values are baked into the Next.js build.
 
-For the first deployment, set this API pre-deploy command:
+For this small recruitment project, the API Docker image can push the Prisma schema at startup when `RUN_DB_PUSH_ON_START=true`. If you prefer Railway's dedicated pre-deploy step instead, leave that variable false and set this API pre-deploy command:
 
 ```bash
 uv run --project apps/api prisma db push --schema packages/database/prisma/schema.prisma

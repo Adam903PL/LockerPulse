@@ -29,4 +29,4 @@ RUN DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL}" uv run --project apps/api pri
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uv run --project apps/api uvicorn locker_pulse_api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "if [ \"${RUN_DB_PUSH_ON_START:-false}\" = \"true\" ] && [ -n \"${DATABASE_URL:-}\" ]; then uv run --project apps/api prisma db push --schema packages/database/prisma/schema.prisma; fi; exec uv run --project apps/api uvicorn locker_pulse_api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -159,6 +159,19 @@ def calculate_score_penalty(
 def analysis_to_public(analysis: Any | None) -> UserReportAnalysisPublic | None:
     if analysis is None:
         return None
+    model_name = _field(analysis, "modelName") or ""
+    raw_response = _field(analysis, "rawResponse")
+    provider = _effective_provider(
+        model_name=model_name,
+        provider=_field(analysis, "provider"),
+        raw_response=raw_response,
+    )
+    analysis_mode = _effective_mode(
+        model_name=model_name,
+        provider=provider,
+        analysis_mode=_field(analysis, "analysisMode"),
+        raw_response=raw_response,
+    )
     return UserReportAnalysisPublic(
         status=_field(analysis, "status") or "pending",
         severity=_field(analysis, "severity") or 0,
@@ -171,10 +184,10 @@ def analysis_to_public(analysis: Any | None) -> UserReportAnalysisPublic | None:
         score_penalty=_field(analysis, "scorePenalty") or 0,
         summary=_field(analysis, "summary") or "Analiza oczekuje na wynik.",
         evidence=_json_list(_field(analysis, "evidence")),
-        model_name=_field(analysis, "modelName") or "",
+        model_name=model_name or provider,
         prompt_version=_field(analysis, "promptVersion") or "",
-        provider=_field(analysis, "provider") or "rules",
-        analysis_mode=_field(analysis, "analysisMode") or "rules",
+        provider=provider,
+        analysis_mode=analysis_mode,
         used_images=_field(analysis, "usedImages") is True,
         created_at=_field(analysis, "createdAt") or datetime.now(timezone.utc),
         finished_at=_field(analysis, "finishedAt"),
@@ -298,6 +311,52 @@ def _latest_analysis(analyses: list[Any]) -> Any | None:
         return None
     empty_date = datetime.min.replace(tzinfo=timezone.utc)
     return max(analyses, key=lambda analysis: _field(analysis, "createdAt") or empty_date)
+
+
+def _effective_provider(*, model_name: str, provider: str | None, raw_response: Any) -> str:
+    if _looks_like_model_analysis(model_name=model_name, raw_response=raw_response):
+        return "litellm"
+    if provider in {"rules", "litellm"}:
+        return provider
+    return _provider_from_model_name(model_name)
+
+
+def _effective_mode(
+    *,
+    model_name: str,
+    provider: str,
+    analysis_mode: str | None,
+    raw_response: Any,
+) -> str:
+    if analysis_mode == "rules_fallback":
+        return "rules_fallback"
+    if _looks_like_model_analysis(model_name=model_name, raw_response=raw_response):
+        return "litellm"
+    if analysis_mode in {"rules", "litellm"}:
+        return analysis_mode
+    return _mode_from_provider(provider)
+
+
+def _looks_like_model_analysis(*, model_name: str, raw_response: Any) -> bool:
+    normalized = model_name.strip().lower()
+    if not normalized or normalized == "rules":
+        return False
+    if isinstance(raw_response, dict) and raw_response.get("source") == "rule_based":
+        return False
+    return True
+
+
+def _provider_from_model_name(model_name: str) -> str:
+    normalized = model_name.strip().lower()
+    if normalized and normalized != "rules":
+        return "litellm"
+    return "rules"
+
+
+def _mode_from_provider(provider: str) -> str:
+    if provider == "litellm":
+        return "litellm"
+    return "rules"
 
 
 def _highest_risk_floor(values: list[str]) -> ReportRiskFloor:

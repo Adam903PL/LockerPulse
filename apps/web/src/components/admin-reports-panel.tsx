@@ -194,13 +194,14 @@ function ReportCard({
           </p>
 
           {report.analysis ? (
-            <div className="mt-3 grid gap-2 sm:grid-cols-6">
+            <div className="mt-3 grid gap-2 sm:grid-cols-7">
               <Metric label="Severity" value={`${report.analysis.severity}/100`} />
               <Metric label="Confidence" value={`${Math.round(report.analysis.confidence * 100)}%`} />
               <Metric label="Penalty" value={`-${report.analysis.score_penalty}`} />
               <Metric label="Risk floor" value={report.analysis.recommended_risk_floor} />
               <Metric label="Provider" value={analysisProviderLabel(report.analysis)} />
               <Metric label="Mode" value={analysisModeLabel(report.analysis.analysis_mode)} />
+              <Metric label="Czas" value={analysisDurationLabel(report.analysis)} />
             </div>
           ) : null}
           {report.analysis?.error ? (
@@ -265,10 +266,10 @@ function analysisProviderLabel(analysis: AdminReportItem["analysis"]) {
   if (analysis.provider === "litellm") {
     return analysis.model_name || "LiteLLM";
   }
-  return analysis.provider;
+  return analysis.provider || analysis.model_name || "Brak";
 }
 
-function analysisModeLabel(mode: string) {
+function analysisModeLabel(mode?: string) {
   if (mode === "rules_fallback") {
     return "Fallback";
   }
@@ -278,7 +279,20 @@ function analysisModeLabel(mode: string) {
   if (mode === "litellm") {
     return "Model";
   }
-  return mode;
+  return mode || "Brak";
+}
+
+function analysisDurationLabel(analysis: AdminReportItem["analysis"]) {
+  if (!analysis?.finished_at) {
+    return "W toku";
+  }
+  const started = new Date(analysis.created_at).getTime();
+  const finished = new Date(analysis.finished_at).getTime();
+  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) {
+    return "-";
+  }
+  const seconds = Math.max(0, Math.round((finished - started) / 1000));
+  return `${seconds}s`;
 }
 
 function statusClass(status: string | null) {

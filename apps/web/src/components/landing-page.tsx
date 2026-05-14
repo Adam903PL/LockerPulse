@@ -67,29 +67,27 @@ export function LandingPage() {
 
       <section className="relative border-b border-black/10 bg-[#ffd200]">
         <div className="absolute inset-0 landing-hero-pattern opacity-45" aria-hidden="true" />
-        <div className="relative mx-auto grid w-full max-w-7xl gap-8 px-4 py-6 sm:px-6 lg:py-10">
+        <div className="relative mx-auto grid w-full max-w-[96rem] gap-6 px-4 py-5 sm:px-6 lg:py-8">
           <LandingVideoPlayer />
 
-          <div className="mx-auto w-full max-w-4xl">
-            <div className="flex flex-col justify-between rounded-2xl border border-black/10 bg-white p-6 shadow-xl sm:p-8 lg:min-h-[420px]">
-              <div className="mb-7">
+          <div className="mx-auto w-full">
+            <div className="grid gap-6 rounded-2xl border border-black/10 bg-white p-4 shadow-xl sm:p-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)] lg:items-stretch lg:p-6 xl:gap-8">
+              <div className="min-w-0">
                 <LandingModelViewer />
               </div>
-              <div>
+              <div className="flex min-w-0 flex-col justify-center py-2 lg:py-4">
                 <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-[#ffd200] px-3 py-1.5 text-xs font-black uppercase">
                   <Sparkles className="h-4 w-4" />
                   InPost-inspired technical showcase
                 </div>
-                <h1 className="mt-5 max-w-3xl text-4xl font-black leading-[0.95] tracking-normal sm:text-6xl lg:text-7xl">
+                <h1 className="mt-5 max-w-2xl text-4xl font-black leading-[0.98] tracking-normal sm:text-5xl xl:text-6xl">
                   LockerPulse wie, który Paczkomat ma sens dzisiaj.
                 </h1>
-                <p className="mt-5 max-w-2xl text-base font-semibold leading-7 text-[#3c3c3c] sm:text-lg">
+                <p className="mt-5 max-w-xl text-base font-semibold leading-7 text-[#3c3c3c]">
                   Aplikacja bierze realne dane z API InPost, dodaje historię działania, zgłoszenia użytkowników
                   i ocenę zgłoszeń, żeby polecić punkt albo pokazać Plan B.
                 </p>
-              </div>
-
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="/app"
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[#1d1d1b] px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-black"
@@ -104,6 +102,7 @@ export function LandingPage() {
                   Zobacz triage zgłoszeń
                   <Bot className="h-4 w-4" />
                 </Link>
+                </div>
               </div>
             </div>
           </div>

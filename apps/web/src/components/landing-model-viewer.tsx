@@ -16,10 +16,10 @@ const MODEL_MARKUP = `
     shadow-intensity="1"
     exposure="1.15"
     environment-image="neutral"
-    camera-orbit="42deg 68deg 5m"
-    field-of-view="38deg"
-    min-camera-orbit="auto auto 2.2m"
-    max-camera-orbit="auto auto 9m"
+    camera-orbit="38deg 67deg 7m"
+    field-of-view="42deg"
+    min-camera-orbit="auto auto 3.5m"
+    max-camera-orbit="auto auto 10m"
     interaction-prompt="none"
     touch-action="pan-y"
     style="display:block;width:100%;height:100%;background:transparent;--poster-color:transparent;"
@@ -73,7 +73,7 @@ export function LandingModelViewer() {
           </div>
         </div>
 
-        <div className="relative h-[300px] sm:h-[350px] lg:h-[410px]">
+        <div className="relative h-[300px] sm:h-[360px] lg:h-[460px]">
           {isViewerReady ? (
             <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: MODEL_MARKUP }} />
           ) : (

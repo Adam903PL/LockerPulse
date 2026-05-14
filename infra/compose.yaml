@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lockerpulse-postgres
+    environment:
+      POSTGRES_DB: lockerpulse
+      POSTGRES_USER: lockerpulse
+      POSTGRES_PASSWORD: lockerpulse
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - lockerpulse-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lockerpulse -d lockerpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lockerpulse-postgres:

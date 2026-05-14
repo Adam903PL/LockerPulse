@@ -1,0 +1,10 @@
+{
+  "name": "@lockerpulse/database",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate": "uv run --project ../../apps/api prisma generate --schema prisma/schema.prisma",
+    "migrate": "uv run --project ../../apps/api prisma migrate dev --schema prisma/schema.prisma",
+    "push": "uv run --project ../../apps/api prisma db push --schema prisma/schema.prisma"
+  }
+}

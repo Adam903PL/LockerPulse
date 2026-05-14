@@ -1,0 +1,182 @@
+generator client {
+  provider  = "prisma-client-py"
+  interface = "asyncio"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Point {
+  id                       String   @id @default(cuid())
+  country                  String
+  name                     String
+  status                   String?
+  pointType                Json
+  latitude                 Float
+  longitude                Float
+  distanceMeters           Int?
+  address                  String?
+  city                     String?
+  province                 String?
+  postCode                 String?
+  street                   String?
+  buildingNumber           String?
+  location247              Boolean  @default(false)
+  easyAccessZone           Boolean  @default(false)
+  physicalType             String?
+  imageUrl                 String?
+  lockerAvailabilityStatus String?
+  functions                Json
+  raw                      Json
+  fetchedAt                DateTime @default(now())
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  snapshots                PointSnapshot[]
+  statusEvents             PointStatusEvent[]
+  userReports              UserReport[]
+
+  @@unique([country, name])
+  @@index([country, city])
+  @@index([latitude, longitude])
+}
+
+model SearchRun {
+  id             String   @id @default(cuid())
+  lat            Float
+  lng            Float
+  radiusM        Int
+  country        String
+  pointType      String
+  functions      Json
+  resultCount    Int
+  upstreamCount  Int?
+  durationMs     Int
+  status         String
+  error          String?
+  createdAt      DateTime @default(now())
+}
+
+model CollectorRun {
+  id            String             @id @default(cuid())
+  mode          String
+  status        String
+  targetCount   Int                @default(0)
+  pointCount    Int                @default(0)
+  snapshotCount Int                @default(0)
+  eventCount    Int                @default(0)
+  durationMs    Int?
+  error         String?
+  startedAt     DateTime           @default(now())
+  finishedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  snapshots     PointSnapshot[]
+  statusEvents  PointStatusEvent[]
+
+  @@index([startedAt])
+  @@index([status])
+}
+
+model PointSnapshot {
+  id                       String        @id @default(cuid())
+  pointId                  String
+  point                    Point         @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  collectorRunId           String?
+  collectorRun             CollectorRun? @relation(fields: [collectorRunId], references: [id], onDelete: SetNull)
+  country                  String
+  name                     String
+  status                   String?
+  lockerAvailabilityStatus String?
+  score                    Int
+  grade                    String
+  location247              Boolean       @default(false)
+  easyAccessZone           Boolean       @default(false)
+  physicalType             String?
+  functions                Json
+  raw                      Json
+  collectedAt              DateTime      @default(now())
+  createdAt                DateTime      @default(now())
+
+  @@index([country, name, collectedAt])
+  @@index([pointId, collectedAt])
+  @@index([collectorRunId])
+}
+
+model PointStatusEvent {
+  id                               String        @id @default(cuid())
+  pointId                          String
+  point                            Point         @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  collectorRunId                   String?
+  collectorRun                     CollectorRun? @relation(fields: [collectorRunId], references: [id], onDelete: SetNull)
+  country                          String
+  name                             String
+  eventType                        String
+  fromStatus                       String?
+  toStatus                         String?
+  fromLockerAvailabilityStatus     String?
+  toLockerAvailabilityStatus       String?
+  detectedAt                       DateTime      @default(now())
+  createdAt                        DateTime      @default(now())
+
+  @@index([country, name, detectedAt])
+  @@index([pointId, detectedAt])
+  @@index([collectorRunId])
+  @@index([eventType])
+}
+
+model UserReport {
+  id        String   @id @default(cuid())
+  pointId   String
+  point     Point    @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  country   String
+  name      String
+  reason    String
+  comment   String
+  photos    Json?
+  source    String   @default("web")
+  isDemo    Boolean  @default(false)
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now())
+  analysis  UserReportAnalysis?
+
+  @@index([country, name, createdAt])
+  @@index([pointId, createdAt])
+  @@index([reason])
+  @@index([isDemo])
+}
+
+model UserReportAnalysis {
+  id                   String     @id @default(cuid())
+  reportId             String     @unique
+  report               UserReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  severity             Int        @default(0)
+  confidence           Float      @default(0)
+  category             String     @default("unclear")
+  isActionable         Boolean    @default(false)
+  spamLikelihood       Float      @default(0)
+  photoEvidence        String     @default("none")
+  recommendedRiskFloor String     @default("none")
+  scorePenalty         Int        @default(0)
+  summary              String     @default("")
+  evidence             Json
+  modelName            String
+  promptVersion        String
+  provider             String     @default("rules")
+  analysisMode         String     @default("rules")
+  usedImages           Boolean    @default(false)
+  rawResponse          Json?
+  status               String     @default("pending")
+  error                String?
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([recommendedRiskFloor])
+  @@index([provider])
+  @@index([analysisMode])
+}

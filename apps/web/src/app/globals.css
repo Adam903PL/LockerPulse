@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f4f2;
+  --foreground: #1d1d1b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Montserrat", "Montserrat Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
+}
+
+.leaflet-container {
+  font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
+}
+
+.locker-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #1d1d1b;
+  border-radius: 999px;
+  background: var(--marker-color);
+  color: #1d1d1b;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgb(29 29 27 / 0.24);
+}
+
+.locker-marker-selected {
+  outline: 3px solid rgb(255 210 0 / 0.55);
+  box-shadow: 0 10px 28px rgb(29 29 27 / 0.38);
+}
+
+.landing-hero-pattern {
+  background:
+    linear-gradient(90deg, rgb(29 29 27 / 0.08) 1px, transparent 1px),
+    linear-gradient(rgb(29 29 27 / 0.08) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.landing-range {
+  accent-color: #ffd200;
+  cursor: pointer;
+}
+
+.landing-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.landing-reveal {
+  animation: landing-rise 680ms ease both;
+}
+
+.landing-scan-line {
+  animation: landing-scan 1.7s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-scan {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleX(0.24);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal,
+  .landing-scan-line {
+    animation: none;
+  }
+}

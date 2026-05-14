@@ -1,0 +1,58 @@
+{
+  "targets": [
+    {
+      "label": "Warszawa centrum",
+      "lat": 52.2297,
+      "lng": 21.0122,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    },
+    {
+      "label": "Kraków centrum",
+      "lat": 50.0647,
+      "lng": 19.945,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    },
+    {
+      "label": "Gdańsk centrum",
+      "lat": 54.3495,
+      "lng": 18.6481,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    },
+    {
+      "label": "Wrocław centrum",
+      "lat": 51.1079,
+      "lng": 17.0385,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    },
+    {
+      "label": "Poznań centrum",
+      "lat": 52.4064,
+      "lng": 16.9252,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    },
+    {
+      "label": "Łódź centrum",
+      "lat": 51.7592,
+      "lng": 19.456,
+      "radius_m": 5000,
+      "country": "PL",
+      "point_type": "parcel_locker_only",
+      "max_pages": 1
+    }
+  ]
+}

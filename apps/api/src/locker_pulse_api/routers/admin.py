@@ -35,10 +35,9 @@ def get_admin_report_service(request: Request) -> AdminReportService:
 async def list_reports(
     _: Annotated[None, Depends(verify_admin_token)],
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    include_demo: bool = True,
     service: AdminReportService = Depends(get_admin_report_service),
 ) -> AdminReportListResponse:
-    return await service.list_reports(limit=limit, include_demo=include_demo)
+    return await service.list_reports(limit=limit)
 
 
 @router.delete(

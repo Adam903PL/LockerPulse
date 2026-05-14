@@ -18,10 +18,9 @@ class AdminReportService:
     def __init__(self, point_repository: PointRepository) -> None:
         self._point_repository = point_repository
 
-    async def list_reports(self, *, limit: int = 100, include_demo: bool = True) -> AdminReportListResponse:
+    async def list_reports(self, *, limit: int = 100) -> AdminReportListResponse:
         reports = await self._point_repository.list_user_reports(
             limit=limit,
-            include_demo=include_demo,
         )
         items = [_to_admin_report_item(report) for report in reports]
         return AdminReportListResponse(count=len(items), items=items)
@@ -45,7 +44,6 @@ def _to_admin_report_item(report: Any) -> AdminReportItem:
         comment=_field(report, "comment") or "",
         photos_count=len(_report_photos(_field(report, "photos"))),
         source=_field(report, "source") or "web",
-        is_demo=_field(report, "isDemo") is True,
         created_at=_field(report, "createdAt") or datetime.now(timezone.utc),
         point_address=_field(point, "address"),
         analysis_status=public_analysis.status if public_analysis else None,

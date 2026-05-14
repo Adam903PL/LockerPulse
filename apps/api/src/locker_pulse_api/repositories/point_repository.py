@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from dataclasses import dataclass
-from math import atan2, cos, radians, sin, sqrt
+from math import cos, radians
 from typing import Any
 
 from locker_pulse_api.services.scoring import score_point
@@ -161,7 +161,7 @@ class PointRepository:
             },
         )
 
-    async def get_latest_snapshot(self, *, country: str, name: str, include_demo: bool = False) -> Any | None:
+    async def get_latest_snapshot(self, *, country: str, name: str) -> Any | None:
         if not self._db:
             return None
 
@@ -171,63 +171,9 @@ class PointRepository:
             take=20,
         )
         for snapshot in snapshots:
-            if include_demo or not _record_has_demo_raw(snapshot):
+            if not _record_has_demo_raw(snapshot):
                 return snapshot
         return None
-
-    async def get_demo_snapshot(self, *, country: str, name: str) -> Any | None:
-        if not self._db:
-            return None
-
-        snapshots = await self._db.pointsnapshot.find_many(
-            where={"country": country, "name": name},
-            order={"collectedAt": "desc"},
-            take=50,
-        )
-        for snapshot in snapshots:
-            raw = getattr(snapshot, "raw", None)
-            if isinstance(raw, dict) and raw.get("demo_history") is True:
-                return snapshot
-        return None
-
-    async def get_demo_snapshots_near(
-        self,
-        *,
-        country: str,
-        lat: float,
-        lng: float,
-        radius_m: int,
-        limit: int = 250,
-    ) -> list[Any]:
-        if not self._db:
-            return []
-
-        snapshots = await self._db.pointsnapshot.find_many(
-            where={"country": country},
-            order={"collectedAt": "desc"},
-            take=max(limit * 4, 500),
-        )
-        selected: list[Any] = []
-        seen: set[str] = set()
-        for snapshot in snapshots:
-            raw = getattr(snapshot, "raw", None)
-            if not isinstance(raw, dict) or raw.get("demo_history") is not True:
-                continue
-            name = getattr(snapshot, "name", None)
-            if not name or name in seen:
-                continue
-            location = raw.get("location") or {}
-            point_lat = location.get("latitude")
-            point_lng = location.get("longitude")
-            if point_lat is None or point_lng is None:
-                continue
-            distance = _haversine_m(lat, lng, float(point_lat), float(point_lng))
-            if distance <= radius_m:
-                selected.append(snapshot)
-                seen.add(name)
-            if len(selected) >= limit:
-                break
-        return selected
 
     async def get_point_record(self, *, country: str, name: str) -> Any | None:
         if not self._db:
@@ -250,7 +196,6 @@ class PointRepository:
         lng: float,
         radius_m: int,
         limit: int = 250,
-        include_demo: bool = False,
     ) -> list[Any]:
         if not self._db:
             return []
@@ -267,8 +212,6 @@ class PointRepository:
             },
             take=limit,
         )
-        if include_demo:
-            return records
         return [record for record in records if not _record_has_demo_raw(record)]
 
     async def get_snapshots_since(
@@ -278,7 +221,6 @@ class PointRepository:
         name: str,
         since: datetime,
         limit: int = 200,
-        include_demo: bool = False,
     ) -> list[Any]:
         if not self._db:
             return []
@@ -292,8 +234,6 @@ class PointRepository:
             order={"collectedAt": "desc"},
             take=limit,
         )
-        if include_demo:
-            return snapshots
         return [snapshot for snapshot in snapshots if not _record_has_demo_raw(snapshot)]
 
     async def get_status_events_since(
@@ -303,7 +243,6 @@ class PointRepository:
         name: str,
         since: datetime,
         limit: int = 100,
-        include_demo: bool = False,
     ) -> list[Any]:
         if not self._db:
             return []
@@ -318,9 +257,7 @@ class PointRepository:
             order={"detectedAt": "desc"},
             take=limit,
         )
-        if include_demo:
-            return events
-        return [event for event in events if not _event_is_demo(event)]
+        return [event for event in events if not _event_is_legacy_seed(event)]
 
     async def create_user_report(
         self,
@@ -333,7 +270,6 @@ class PointRepository:
         lat: float | None = None,
         lng: float | None = None,
         source: str = "web",
-        is_demo: bool = False,
     ) -> Any | None:
         if not self._db:
             return None
@@ -369,7 +305,7 @@ class PointRepository:
                 "comment": comment,
                 "photos": PrismaJson(photos or []),
                 "source": source,
-                "isDemo": is_demo,
+                "isDemo": False,
                 "lat": lat,
                 "lng": lng,
             }
@@ -382,7 +318,6 @@ class PointRepository:
         name: str,
         since: datetime,
         limit: int = 200,
-        include_demo: bool = False,
     ) -> list[Any]:
         if not self._db:
             return []
@@ -391,9 +326,8 @@ class PointRepository:
             "country": country,
             "name": name,
             "createdAt": {"gte": since},
+            "isDemo": False,
         }
-        if not include_demo:
-            where["isDemo"] = False
 
         return await self._db.userreport.find_many(
             where=where,
@@ -411,16 +345,12 @@ class PointRepository:
             include={"point": True, "analysis": True},
         )
 
-    async def list_user_reports(self, *, limit: int = 100, include_demo: bool = True) -> list[Any]:
+    async def list_user_reports(self, *, limit: int = 100) -> list[Any]:
         if not self._db:
             return []
 
-        where: dict[str, Any] = {}
-        if not include_demo:
-            where["isDemo"] = False
-
         return await self._db.userreport.find_many(
-            where=where,
+            where={"isDemo": False},
             include={"point": True, "analysis": True},
             order={"createdAt": "desc"},
             take=limit,
@@ -751,21 +681,9 @@ def _record_has_demo_raw(record: Any | None) -> bool:
     return isinstance(raw, dict) and raw.get("demo_history") is True
 
 
-def _event_is_demo(event: Any) -> bool:
+def _event_is_legacy_seed(event: Any) -> bool:
     collector_run = getattr(event, "collectorRun", None)
     return getattr(collector_run, "mode", None) == "demo_history_seed"
-
-
-def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    earth_radius_m = 6_371_000
-    d_lat = radians(lat2 - lat1)
-    d_lng = radians(lng2 - lng1)
-    a = (
-        sin(d_lat / 2) ** 2
-        + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
-    )
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    return earth_radius_m * c
 
 
 def _report_placeholder_point_payload(*, country: str, name: str, lat: float, lng: float) -> dict[str, Any]:

@@ -98,10 +98,10 @@ export function LandingPage() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="/app?demo=true"
+                  href="/app"
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-black/15 bg-[#ffd200] px-5 text-sm font-black text-[#1d1d1b] transition hover:-translate-y-0.5 hover:bg-[#f0c400]"
                 >
-                  Zobacz demo triage
+                  Zobacz triage zgłoszeń
                   <Bot className="h-4 w-4" />
                 </Link>
               </div>
@@ -295,8 +295,8 @@ function FinalCtaSection() {
             Sprawdź Paczkomat
             <MapPin className="h-4 w-4" />
           </Link>
-          <Link href="/app?demo=true" className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-black/15 bg-white px-5 text-sm font-black text-[#1d1d1b] transition hover:bg-[#f8f8f6]">
-            Zobacz demo AI
+          <Link href="/app" className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-black/15 bg-white px-5 text-sm font-black text-[#1d1d1b] transition hover:bg-[#f8f8f6]">
+            Zobacz analizę zgłoszeń
             <Zap className="h-4 w-4" />
           </Link>
         </div>

@@ -51,7 +51,6 @@ export type ReportSummary = {
   window_days: number;
   reasons: Record<string, number>;
   latest_report_at: string | null;
-  has_demo_data: boolean;
   analysis_count: number;
   analysis_pending_count: number;
   problem_score_24h: number;
@@ -92,8 +91,6 @@ export type PointHistoryResponse = {
   country: string;
   name: string;
   window_days: number;
-  is_demo: boolean;
-  demo_note: string | null;
   reliability: ReliabilitySummary;
   timeline: PointHistoryItem[];
   events: PointStatusEventItem[];
@@ -110,7 +107,6 @@ export type PointSearchResponse = {
     open_24_7: boolean | null;
     easy_access: boolean | null;
     min_score: number | null;
-    demo?: boolean;
   };
   count: number;
   upstream_count: number | null;
@@ -192,7 +188,6 @@ export type UserReportResponse = {
   comment: string;
   photos: UserReportPhoto[];
   source: string;
-  is_demo: boolean;
   created_at: string;
   summary: ReportSummary;
   analysis_status: "pending" | "ok" | "failed" | string;
@@ -207,7 +202,6 @@ export type AdminReportItem = {
   comment: string;
   photos_count: number;
   source: string;
-  is_demo: boolean;
   created_at: string;
   point_address: string | null;
   analysis_status: "pending" | "ok" | "failed" | string | null;
@@ -250,5 +244,4 @@ export type SearchFilters = {
   open247: boolean;
   easyAccess: boolean;
   minScore: number;
-  demo: boolean;
 };

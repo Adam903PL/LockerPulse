@@ -28,10 +28,9 @@ class ReliabilityService:
         country: str,
         name: str,
         days: int = 7,
-        include_demo: bool = False,
     ) -> ReliabilitySummary:
-        snapshots = await self._snapshots(country=country, name=name, days=days, include_demo=include_demo)
-        events = await self._events(country=country, name=name, days=days, include_demo=include_demo)
+        snapshots = await self._snapshots(country=country, name=name, days=days)
+        events = await self._events(country=country, name=name, days=days)
         return build_reliability_summary(snapshots=snapshots, events=events)
 
     async def get_history(
@@ -40,19 +39,14 @@ class ReliabilityService:
         country: str,
         name: str,
         days: int = 7,
-        include_demo: bool = False,
     ) -> PointHistoryResponse:
-        snapshots = await self._snapshots(country=country, name=name, days=days, include_demo=include_demo)
-        events = await self._events(country=country, name=name, days=days, include_demo=include_demo)
+        snapshots = await self._snapshots(country=country, name=name, days=days)
+        events = await self._events(country=country, name=name, days=days)
         reliability = build_reliability_summary(snapshots=snapshots, events=events)
-        demo_note = _demo_note(snapshots)
-
         return PointHistoryResponse(
             country=country,
             name=name,
             window_days=days,
-            is_demo=demo_note is not None,
-            demo_note=demo_note,
             reliability=reliability,
             timeline=[
                 PointHistoryItem(
@@ -86,22 +80,20 @@ class ReliabilityService:
             ],
         )
 
-    async def _snapshots(self, *, country: str, name: str, days: int, include_demo: bool) -> list[Any]:
+    async def _snapshots(self, *, country: str, name: str, days: int) -> list[Any]:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         return await self._point_repository.get_snapshots_since(
             country=country,
             name=name,
             since=since,
-            include_demo=include_demo,
         )
 
-    async def _events(self, *, country: str, name: str, days: int, include_demo: bool) -> list[Any]:
+    async def _events(self, *, country: str, name: str, days: int) -> list[Any]:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         return await self._point_repository.get_status_events_since(
             country=country,
             name=name,
             since=since,
-            include_demo=include_demo,
         )
 
 
@@ -175,17 +167,6 @@ def _last_problem_at(snapshots: list[Any]) -> datetime | None:
     for snapshot in snapshots:
         if _field(snapshot, "status") != "Operating":
             return _field(snapshot, "collectedAt")
-    return None
-
-
-def _demo_note(snapshots: list[Any]) -> str | None:
-    for snapshot in snapshots:
-        raw = _field(snapshot, "raw")
-        if isinstance(raw, dict) and raw.get("demo_history") is True:
-            note = raw.get("demo_note")
-            if isinstance(note, str) and note.strip():
-                return note
-            return "Dane przykładowe zasiane lokalnie do prezentacji panelu Niezawodność."
     return None
 
 

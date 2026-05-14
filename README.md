@@ -64,7 +64,7 @@ Requirements:
 - Python 3.10+; Python 3.12 is recommended
 - uv
 - Docker
-- Optional: Ollama with `gemma3:4b` for the local AI triage demo
+- Optional: Ollama with `gemma3:4b` for local model-based report triage
 
 Install dependencies and create the local env file:
 
@@ -109,13 +109,12 @@ Open:
 - customer app: [http://localhost:3000/app](http://localhost:3000/app)
 - backend OpenAPI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - admin reports: [http://localhost:3000/admin](http://localhost:3000/admin)
-- reliability demo: [http://localhost:3000/demo-history?demo=true](http://localhost:3000/demo-history?demo=true)
 
 ### Report triage modes
 
 The app works without any model. By default `REPORT_TRIAGE_MODEL=""` uses deterministic rules based on report category and comment keywords. This is the recommended production default for the first Railway deploy.
 
-For the local AI demo, install Ollama, make sure the server is running, and pull Gemma 3 4B:
+For local model-based triage, install Ollama, make sure the server is running, and pull Gemma 3 4B:
 
 ```bash
 ollama serve
@@ -149,7 +148,7 @@ Analyze pending reports manually, for example after changing the triage provider
 npm run reports:analyze-pending
 ```
 
-### Collector and demo data
+### Collector
 
 Collect status history once:
 
@@ -163,17 +162,7 @@ Run the collector in a 30-minute loop:
 npm run collector:loop
 ```
 
-Seed demo reliability data for the reviewer:
-
-```bash
-npm run demo:history
-```
-
-This command creates 10 local example Paczkomats, including `SYZ01M` in Strzyzewice, with seven-day snapshot histories and different reliability cases. These records are marked in the UI as example data and are meant only to demonstrate the `Niezawodnosc` panel without waiting for several real collector runs.
-
-The demo seed also creates a small cluster around `SYZ01M`, so the detail page can show a risky point and better nearby alternatives. It also creates demo user reports and stored triage analyses for `SYZ01M` and `LODFLIP1`, which shows how community signals affect the advice layer and final score.
-
-Demo data is opt-in. The normal app runs with demo mode OFF and uses live InPost API data plus non-demo local history/reports only. Turn on the `Tryb demo` switch in the UI, or add `demo=true` to the URL, to include these local example Paczkomats.
+There is no demo data mode. Search results come from the live InPost API, while local history and reports appear only after the app collects or receives real data.
 
 ### Local troubleshooting
 
@@ -320,12 +309,6 @@ Get recent point history:
 curl "http://127.0.0.1:8000/api/v1/points/PL/GDA65M/history?days=7"
 ```
 
-Use demo data explicitly:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/points/PL/SYZ01M/history?days=7&demo=true"
-```
-
 Get safer alternatives for a selected point:
 
 ```bash
@@ -340,7 +323,7 @@ curl -X POST "http://127.0.0.1:8000/api/v1/points/PL/SYZ01M/reports" \
   -d "{\"reason\":\"screen_problem\",\"comment\":\"Ekran nie reaguje na dotyk przez kilka prob.\"}"
 ```
 
-The UI can attach up to 3 optional photos to a report. Locally they are stored as small image data URLs in Postgres JSON, which keeps the internship demo self-contained without adding object storage.
+The UI can attach up to 3 optional photos to a report. Locally they are stored as small image data URLs in Postgres JSON, which keeps the project self-contained without adding object storage.
 
 Inspect stored triage analysis for a report:
 
@@ -351,7 +334,7 @@ curl "http://127.0.0.1:8000/api/v1/reports/<report_id>/analysis"
 List and delete reports from the simple admin API:
 
 ```bash
-curl "http://127.0.0.1:8000/api/v1/admin/reports?include_demo=true"
+curl "http://127.0.0.1:8000/api/v1/admin/reports"
 curl -X DELETE "http://127.0.0.1:8000/api/v1/admin/reports/<report_id>"
 ```
 

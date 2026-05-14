@@ -84,10 +84,7 @@ class FakeHistoryRepository:
                 "lockerAvailabilityStatus": "NO_DATA",
                 "score": 95,
                 "grade": "excellent",
-                "raw": {
-                    "demo_history": True,
-                    "demo_note": "Dane przykładowe do prezentacji panelu.",
-                },
+                "raw": {},
             },
             {
                 "status": "Operating",
@@ -95,7 +92,7 @@ class FakeHistoryRepository:
                 "lockerAvailabilityStatus": "NO_DATA",
                 "score": 95,
                 "grade": "excellent",
-                "raw": {"demo_history": True},
+                "raw": {},
             },
         ]
 
@@ -104,10 +101,11 @@ class FakeHistoryRepository:
 
 
 @pytest.mark.asyncio
-async def test_history_response_marks_demo_snapshots():
+async def test_history_response_returns_timeline_without_demo_metadata():
     service = ReliabilityService(FakeHistoryRepository())
 
-    history = await service.get_history(country="PL", name="SYZ01M", days=7, include_demo=True)
+    history = await service.get_history(country="PL", name="SYZ01M", days=7)
 
-    assert history.is_demo is True
-    assert history.demo_note == "Dane przykładowe do prezentacji panelu."
+    assert history.window_days == 7
+    assert history.reliability.label == "stabilny"
+    assert history.timeline[0].status == "Operating"

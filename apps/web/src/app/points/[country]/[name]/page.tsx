@@ -19,7 +19,6 @@ export default async function PointPage({ params, searchParams }: PointPageProps
       returnLat={first(query.lat)}
       returnLng={first(query.lng)}
       returnRadiusM={parseRadius(first(query.radius_m))}
-      demoMode={parseDemo(first(query.demo))}
     />
   );
 }
@@ -34,8 +33,4 @@ function parseRadius(value: string | undefined) {
     return 3000;
   }
   return radius;
-}
-
-function parseDemo(value: string | undefined) {
-  return value === "true" || value === "1";
 }

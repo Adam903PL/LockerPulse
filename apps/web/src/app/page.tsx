@@ -5,7 +5,7 @@ type HomeProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const LEGACY_APP_PARAMS = new Set(["q", "lat", "lng", "radius_m", "demo"]);
+const LEGACY_APP_PARAMS = new Set(["q", "lat", "lng", "radius_m"]);
 
 export default async function Home({ searchParams }: HomeProps) {
   const params = await searchParams;
@@ -24,6 +24,9 @@ function hasLegacyAppParams(params: Record<string, string | string[] | undefined
 function toSearchParams(params: Record<string, string | string[] | undefined>) {
   const next = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
+    if (key === "demo") {
+      continue;
+    }
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item != null) {

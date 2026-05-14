@@ -38,7 +38,6 @@ async def search_points(
     open_24_7: bool | None = None,
     easy_access: bool | None = None,
     min_score: Annotated[int | None, Query(ge=0, le=100)] = None,
-    demo: bool = False,
     service: PointService = Depends(get_point_service),
 ) -> PointSearchResponse:
     try:
@@ -53,7 +52,6 @@ async def search_points(
             open_24_7=open_24_7,
             easy_access=easy_access,
             min_score=min_score,
-            demo=demo,
         )
     except InPostApiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -71,7 +69,6 @@ async def get_point_alternatives(
     lng: Annotated[float, Query(ge=-180, le=180)],
     radius_m: Annotated[int, Query(ge=500, le=50_000)] = 3000,
     limit: Annotated[int, Query(ge=1, le=3)] = 3,
-    demo: bool = False,
     service: PointService = Depends(get_point_service),
 ) -> PointAlternativesResponse:
     try:
@@ -82,7 +79,6 @@ async def get_point_alternatives(
             lng=lng,
             radius_m=radius_m,
             limit=limit,
-            demo=demo,
         )
     except InPostApiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -99,7 +95,6 @@ async def get_point(
     lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     lng: Annotated[float | None, Query(ge=-180, le=180)] = None,
     radius_m: Annotated[int, Query(ge=100, le=50_000)] = 3000,
-    demo: bool = False,
     service: PointService = Depends(get_point_service),
 ) -> PointSummary:
     try:
@@ -109,7 +104,6 @@ async def get_point(
             lat=lat,
             lng=lng,
             radius_m=radius_m,
-            demo=demo,
         )
     except InPostApiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

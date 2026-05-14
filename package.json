@@ -16,7 +16,6 @@
     "db:push": "uv run --project apps/api prisma db push --schema packages/database/prisma/schema.prisma",
     "collector:once": "uv run --project apps/api python -m locker_pulse_api.collector --once",
     "collector:loop": "uv run --project apps/api python -m locker_pulse_api.collector --loop",
-    "demo:history": "uv run --project apps/api python -m locker_pulse_api.demo_history",
     "reports:analyze-pending": "uv run --project apps/api python -m locker_pulse_api.report_triage",
     "explore:api": "uv run --project apps/api python scripts/explore_inpost_api.py",
     "test": "uv run --project apps/api pytest && npm run lint --workspace apps/web && npm run build --workspace apps/web"

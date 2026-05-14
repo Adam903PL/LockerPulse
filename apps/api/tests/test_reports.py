@@ -82,7 +82,7 @@ def test_ai_analysis_summary_adds_problem_score_and_penalty():
 
     assert summary.analysis_count == 2
     assert summary.problem_score_24h > 0
-    assert summary.community_penalty == 24
+    assert summary.community_penalty == 35
     assert summary.ai_risk_floor == "risky"
 
 

@@ -43,7 +43,6 @@ class ReportService:
         country: str,
         name: str,
         payload: UserReportCreate,
-        is_demo: bool = False,
     ) -> UserReportResponse:
         report = await self._point_repository.create_user_report(
             country=country,
@@ -54,7 +53,6 @@ class ReportService:
             lat=payload.lat,
             lng=payload.lng,
             source="web",
-            is_demo=is_demo,
         )
         if report is None:
             raise ReportPointNotFound(f"Point {country}:{name} is not available in local cache.")
@@ -67,7 +65,7 @@ class ReportService:
                 prompt_version=self._prompt_version,
             )
 
-        summary = await self.get_summary(country=country, name=name, days=7, include_demo=is_demo)
+        summary = await self.get_summary(country=country, name=name, days=7)
         return UserReportResponse(
             id=report_id,
             country=country,
@@ -76,7 +74,6 @@ class ReportService:
             comment=_field(report, "comment") or payload.comment,
             photos=_report_photos(_field(report, "photos")),
             source=_field(report, "source") or "web",
-            is_demo=_field(report, "isDemo") is True,
             created_at=_field(report, "createdAt") or datetime.now(timezone.utc),
             summary=summary,
             analysis_status="pending",
@@ -88,14 +85,12 @@ class ReportService:
         country: str,
         name: str,
         days: int = 7,
-        include_demo: bool = False,
     ) -> ReportSummary:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         reports = await self._point_repository.get_user_reports_since(
             country=country,
             name=name,
             since=since,
-            include_demo=include_demo,
         )
         return build_report_summary(reports=reports, days=days)
 
@@ -124,7 +119,6 @@ def build_report_summary(*, reports: list[Any], days: int = 7) -> ReportSummary:
         window_days=days,
         reasons=dict(reason_counts),
         latest_report_at=latest_report_at,
-        has_demo_data=any(_field(report, "isDemo") is True for report in reports),
         analysis_count=stats["analysis_count"],
         analysis_pending_count=stats["analysis_pending_count"],
         problem_score_24h=stats["problem_score_24h"],
@@ -282,9 +276,7 @@ def _analysis_stats(*, reports: list[Any], since: datetime) -> dict[str, Any]:
         int(round((_field(analysis, "severity") or 0) * (_field(analysis, "confidence") or 0)))
         for analysis in valid
     ]
-    average_penalty = round(sum(penalties) / len(penalties))
-    volume_bonus = min(10, len(valid) * 2)
-    community_penalty = min(35, average_penalty + volume_bonus)
+    community_penalty = min(35, sum(penalties))
 
     return {
         "analysis_count": len(ok_analyses),

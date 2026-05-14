@@ -19,7 +19,6 @@ async def get_point_history(
     country: Annotated[str, Path(min_length=2, max_length=2, pattern=r"^[A-Z]{2}$")],
     name: Annotated[str, Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")],
     days: Annotated[int, Query(ge=1, le=30)] = 7,
-    demo: bool = False,
     service: ReliabilityService = Depends(get_reliability_service),
 ) -> PointHistoryResponse:
-    return await service.get_history(country=country, name=name, days=days, include_demo=demo)
+    return await service.get_history(country=country, name=name, days=days)

@@ -51,10 +51,9 @@ async def get_report_summary(
     country: Annotated[str, Path(min_length=2, max_length=2, pattern=r"^[A-Z]{2}$")],
     name: Annotated[str, Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")],
     days: Annotated[int, Query(ge=1, le=30)] = 7,
-    demo: bool = False,
     service: ReportService = Depends(get_report_service),
 ) -> ReportSummary:
-    return await service.get_summary(country=country, name=name, days=days, include_demo=demo)
+    return await service.get_summary(country=country, name=name, days=days)
 
 
 @router.post(
@@ -68,12 +67,11 @@ async def create_report(
     name: Annotated[str, Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")],
     payload: UserReportCreate,
     background_tasks: BackgroundTasks,
-    demo: bool = False,
     service: ReportService = Depends(get_report_service),
     triage_service: ReportTriageService = Depends(get_report_triage_service),
 ) -> UserReportResponse:
     try:
-        response = await service.create_report(country=country, name=name, payload=payload, is_demo=demo)
+        response = await service.create_report(country=country, name=name, payload=payload)
     except ReportPointNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     background_tasks.add_task(triage_service.analyze_report, report_id=response.id)

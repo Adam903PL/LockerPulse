@@ -10,14 +10,12 @@ export default async function AppPage({ searchParams }: AppPageProps) {
   const query = first(params.q);
   const coordinates = parseCoordinates(first(params.lat), first(params.lng));
   const radiusM = parseRadius(first(params.radius_m));
-  const demoMode = parseDemo(first(params.demo));
 
   return (
     <LockerPulseApp
       initialQuery={query ?? ""}
       initialCoordinates={coordinates}
       initialRadiusM={radiusM}
-      initialDemoMode={demoMode}
     />
   );
 }
@@ -47,8 +45,4 @@ function parseRadius(value?: string) {
     return 3000;
   }
   return radius;
-}
-
-function parseDemo(value?: string) {
-  return value === "true" || value === "1";
 }

@@ -265,7 +265,6 @@ class FakeReportService:
             comment=payload.comment,
             photos=payload.photos,
             source="web",
-            is_demo=False,
             created_at=datetime.now(timezone.utc),
             summary=await self.get_summary(country=kwargs["country"], name=kwargs["name"], days=7),
         )
@@ -299,7 +298,6 @@ class FakeAdminReportService:
             comment="Ekran nie reaguje na dotyk.",
             photos_count=1,
             source="web",
-            is_demo=True,
             created_at=datetime.now(timezone.utc),
             point_address="Strzyzewice 108",
             analysis_status="ok",
@@ -495,7 +493,7 @@ def test_admin_reports_endpoint_lists_reports():
     app.dependency_overrides[get_admin_report_service] = override_admin_report_service
     try:
         with TestClient(app) as client:
-            response = client.get("/api/v1/admin/reports", params={"include_demo": True})
+            response = client.get("/api/v1/admin/reports")
     finally:
         app.dependency_overrides.clear()
 

@@ -99,7 +99,6 @@ class ReportSummary(BaseModel):
     window_days: int
     reasons: dict[str, int] = Field(default_factory=dict)
     latest_report_at: datetime | None = None
-    has_demo_data: bool = False
     analysis_count: int = 0
     analysis_pending_count: int = 0
     problem_score_24h: int = 0
@@ -164,8 +163,6 @@ class PointHistoryResponse(BaseModel):
     country: str
     name: str
     window_days: int
-    is_demo: bool = False
-    demo_note: str | None = None
     reliability: ReliabilitySummary
     timeline: list[PointHistoryItem]
     events: list[PointStatusEventItem]
@@ -181,7 +178,6 @@ class SearchQueryEcho(BaseModel):
     open_24_7: bool | None
     easy_access: bool | None
     min_score: int | None
-    demo: bool = False
 
 
 class SearchInsights(BaseModel):
@@ -232,7 +228,6 @@ class UserReportResponse(BaseModel):
     comment: str
     photos: list[UserReportPhoto] = Field(default_factory=list)
     source: str
-    is_demo: bool
     created_at: datetime
     summary: ReportSummary
     analysis_status: ReportAnalysisStatus = "pending"
@@ -252,7 +247,6 @@ class AdminReportItem(BaseModel):
     comment: str
     photos_count: int
     source: str
-    is_demo: bool
     created_at: datetime
     point_address: str | None = None
     analysis_status: ReportAnalysisStatus | None = None

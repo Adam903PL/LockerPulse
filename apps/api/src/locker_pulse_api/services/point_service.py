@@ -44,7 +44,6 @@ class PointService:
         open_24_7: bool | None,
         easy_access: bool | None,
         min_score: int | None,
-        demo: bool = False,
     ) -> PointSearchResponse:
         started = perf_counter()
         upstream_count: int | None = None
@@ -68,50 +67,7 @@ class PointService:
                 _to_point_summary(item, functions=functions, radius_m=radius_m)
                 for item in raw_items
             ]
-            if demo:
-                demo_records = await self._point_repository.get_points_near(
-                    country=country,
-                    lat=lat,
-                    lng=lng,
-                    radius_m=radius_m,
-                    include_demo=True,
-                )
-                demo_summaries = [
-                    await self._summary_from_cached_record(
-                        record,
-                        lat=lat,
-                        lng=lng,
-                        radius_m=radius_m,
-                        include_demo=True,
-                    )
-                    for record in demo_records
-                    if _is_demo_point(record)
-                ]
-                demo_snapshots = await self._point_repository.get_demo_snapshots_near(
-                    country=country,
-                    lat=lat,
-                    lng=lng,
-                    radius_m=radius_m,
-                )
-                demo_summaries.extend(
-                    [
-                        await self._summary_from_cached_record(
-                            snapshot,
-                            lat=lat,
-                            lng=lng,
-                            radius_m=radius_m,
-                            include_demo=True,
-                        )
-                        for snapshot in demo_snapshots
-                    ]
-                )
-                seen_ids = {item.id for item in scored_items}
-                for item in demo_summaries:
-                    if item.id not in seen_ids:
-                        scored_items.append(item)
-                        seen_ids.add(item.id)
-
-            scored_items = await self._apply_reliability(scored_items, include_demo=demo)
+            scored_items = await self._apply_reliability(scored_items)
             filtered_items = _filter_items(
                 scored_items,
                 functions=functions,
@@ -150,7 +106,6 @@ class PointService:
                     open_24_7=open_24_7,
                     easy_access=easy_access,
                     min_score=min_score,
-                    demo=demo,
                 ),
                 count=len(ranked_items),
                 upstream_count=upstream_count,
@@ -183,38 +138,18 @@ class PointService:
         lat: float | None = None,
         lng: float | None = None,
         radius_m: int = 50_000,
-        demo: bool = False,
     ) -> PointSummary:
-        demo_snapshot = await self._point_repository.get_demo_snapshot(country=country, name=name) if demo else None
-        if demo_snapshot is not None:
-            return await self._summary_from_cached_record(
-                demo_snapshot,
-                lat=lat,
-                lng=lng,
-                radius_m=radius_m,
-                include_demo=True,
-            )
-
         cached_point = await self._point_repository.get_point_record(country=country, name=name)
-        if demo and _is_demo_point(cached_point):
-            return await self._summary_from_cached_record(
-                cached_point,
-                lat=lat,
-                lng=lng,
-                radius_m=radius_m,
-                include_demo=True,
-            )
 
         try:
             point = await self._inpost_client.get_point(country=country, name=name)
         except InPostApiError:
-            if cached_point is not None and (demo or not _is_demo_point(cached_point)):
+            if cached_point is not None and not _is_legacy_seeded_point(cached_point):
                 return await self._summary_from_cached_record(
                     cached_point,
                     lat=lat,
                     lng=lng,
                     radius_m=radius_m,
-                    include_demo=demo,
                 )
             raise
 
@@ -226,7 +161,7 @@ class PointService:
             radius_m=radius_m,
         )
         summary = _to_point_summary(point, functions=[], radius_m=radius_m)
-        return await self._apply_reliability_to_item(summary, include_demo=demo)
+        return await self._apply_reliability_to_item(summary)
 
     async def get_alternatives(
         self,
@@ -237,7 +172,6 @@ class PointService:
         lng: float,
         radius_m: int,
         limit: int,
-        demo: bool = False,
     ) -> PointAlternativesResponse:
         point = await self.get_point(
             country=country,
@@ -245,7 +179,6 @@ class PointService:
             lat=lat,
             lng=lng,
             radius_m=radius_m,
-            demo=demo,
         )
         candidates = await self._alternative_candidates(
             country=country,
@@ -253,7 +186,6 @@ class PointService:
             lng=lng,
             radius_m=radius_m,
             limit=max(20, limit * 8),
-            include_demo=demo,
         )
         alternatives = select_alternatives(point, candidates, limit=limit)
         risk = point.risk or classify_point_risk(point)
@@ -272,29 +204,26 @@ class PointService:
         lat: float | None,
         lng: float | None,
         radius_m: int,
-        include_demo: bool = False,
     ) -> PointSummary:
         point = _record_to_point(record)
         if lat is not None and lng is not None:
             point = {**point, "distance": _distance_from_reference(point, lat=lat, lng=lng)}
         summary = _to_point_summary(point, functions=[], radius_m=radius_m)
-        return await self._apply_reliability_to_item(summary, include_demo=include_demo)
+        return await self._apply_reliability_to_item(summary)
 
-    async def _apply_reliability(self, items: list[PointSummary], *, include_demo: bool = False) -> list[PointSummary]:
-        return [await self._apply_reliability_to_item(item, include_demo=include_demo) for item in items]
+    async def _apply_reliability(self, items: list[PointSummary]) -> list[PointSummary]:
+        return [await self._apply_reliability_to_item(item) for item in items]
 
-    async def _apply_reliability_to_item(self, item: PointSummary, *, include_demo: bool = False) -> PointSummary:
+    async def _apply_reliability_to_item(self, item: PointSummary) -> PointSummary:
         reliability = await self._reliability_service.get_summary(
             country=item.country,
             name=item.name,
             days=7,
-            include_demo=include_demo,
         )
         report_summary = await self._report_service.get_summary(
             country=item.country,
             name=item.name,
             days=7,
-            include_demo=include_demo,
         )
         adjustment = reliability_adjustment(reliability)
         score_adjustment = adjustment.adjustment
@@ -337,7 +266,6 @@ class PointService:
         lng: float,
         radius_m: int,
         limit: int,
-        include_demo: bool = False,
     ) -> list[PointSummary]:
         raw_items: list[dict[str, Any]] = []
         try:
@@ -363,7 +291,7 @@ class PointService:
             _to_point_summary(_with_distance(item, lat=lat, lng=lng), functions=[], radius_m=radius_m)
             for item in raw_items
         ]
-        for item in await self._apply_reliability(live_summaries, include_demo=include_demo):
+        for item in await self._apply_reliability(live_summaries):
             candidate_map[item.id] = item
 
         cached_records = await self._point_repository.get_points_near(
@@ -371,7 +299,6 @@ class PointService:
             lat=lat,
             lng=lng,
             radius_m=radius_m,
-            include_demo=include_demo,
         )
         cached_summaries = [
             await self._summary_from_cached_record(
@@ -379,10 +306,9 @@ class PointService:
                 lat=lat,
                 lng=lng,
                 radius_m=radius_m,
-                include_demo=include_demo,
             )
             for record in cached_records
-            if include_demo or not _is_demo_point(record)
+            if not _is_legacy_seeded_point(record)
         ]
         for item in cached_summaries:
             if item.distance_m is not None and item.distance_m <= radius_m:
@@ -523,7 +449,7 @@ def _problem_reasons(report_summary: Any) -> list[str]:
     return reasons
 
 
-def _is_demo_point(record: Any | None) -> bool:
+def _is_legacy_seeded_point(record: Any | None) -> bool:
     raw = _raw_from_record(record)
     return bool(raw and raw.get("demo_history") is True)
 

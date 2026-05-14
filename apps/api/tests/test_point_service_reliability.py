@@ -20,9 +20,6 @@ class FakeRepository:
     async def get_status_events_since(self, **kwargs):
         return self._events
 
-    async def get_demo_snapshot(self, **kwargs):
-        return None
-
     async def get_user_reports_since(self, **kwargs):
         return self._reports
 
@@ -148,32 +145,13 @@ async def test_ai_report_analysis_reduces_final_score():
     result = await service._apply_reliability_to_item(point_summary(score=90))
 
     assert result.base_score == 90
-    assert result.community_penalty == 22
-    assert result.score == 68
+    assert result.community_penalty == 20
+    assert result.score == 70
     assert result.risk.level == "risky"
 
 
 @pytest.mark.asyncio
-async def test_point_detail_can_use_seeded_demo_point_from_cache():
-    repository = CachedPointRepository(snapshots=[], events=[])
-    service = PointService(FailingInPostClient(), repository)
-
-    result = await service.get_point(
-        country="PL",
-        name="SYZ01M",
-        lat=51.0808,
-        lng=22.4416,
-        radius_m=3000,
-        demo=True,
-    )
-
-    assert result.name == "SYZ01M"
-    assert result.address == "Strzyżewice 108, 23-107 Strzyżewice"
-    assert result.distance_m == 0
-
-
-@pytest.mark.asyncio
-async def test_point_detail_does_not_use_demo_cache_when_demo_is_off():
+async def test_point_detail_does_not_use_seeded_demo_cache():
     repository = CachedPointRepository(snapshots=[], events=[])
     service = PointService(FailingInPostClient(), repository)
 
@@ -184,5 +162,4 @@ async def test_point_detail_does_not_use_demo_cache_when_demo_is_off():
             lat=51.0808,
             lng=22.4416,
             radius_m=3000,
-            demo=False,
         )

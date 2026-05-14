@@ -25,12 +25,6 @@ import type {
 } from "@/types/points";
 import { MapShell } from "./map-shell";
 import { ScoreBadge } from "./score-badge";
-import {
-  DemoModeSwitch,
-  DEMO_SEARCH,
-  readPersistedDemoMode,
-  writePersistedDemoMode,
-} from "./demo-mode-switch";
 
 const DEFAULT_RADIUS_M = 3000;
 const DEFAULT_LIMIT = 20;
@@ -42,44 +36,36 @@ type LockerPulseAppProps = {
   initialQuery?: string;
   initialCoordinates?: Coordinates | null;
   initialRadiusM?: number;
-  initialDemoMode?: boolean;
 };
 
 export function LockerPulseApp({
   initialQuery = "",
   initialCoordinates = null,
   initialRadiusM = DEFAULT_RADIUS_M,
-  initialDemoMode = false,
 }: LockerPulseAppProps) {
   const router = useRouter();
-  const initialDemoCoordinates = initialDemoMode && !initialCoordinates
-    ? { lat: DEMO_SEARCH.lat, lng: DEMO_SEARCH.lng }
-    : null;
-  const [demoMode, setDemoMode] = useState(initialDemoMode);
-  const [address, setAddress] = useState(initialQuery || (initialDemoCoordinates ? DEMO_SEARCH.query : ""));
+  const [address, setAddress] = useState(initialQuery);
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(
-    initialQuery || (initialDemoCoordinates ? DEMO_SEARCH.query : null),
+    initialQuery || null,
   );
   const [addressError, setAddressError] = useState<string | null>(null);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
-  const [hasLocation, setHasLocation] = useState(Boolean(initialCoordinates || initialDemoCoordinates));
+  const [hasLocation, setHasLocation] = useState(Boolean(initialCoordinates));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const realtimeRequestId = useRef(0);
-  const lastAppliedRealtimeQuery = useRef(initialQuery || (initialDemoCoordinates ? DEMO_SEARCH.query : ""));
-  const hasRestoredPersistedDemoMode = useRef(false);
+  const lastAppliedRealtimeQuery = useRef(initialQuery);
   const [filters, setFilters] = useState<SearchFilters>({
-    lat: initialCoordinates?.lat ?? initialDemoCoordinates?.lat ?? DEFAULT_CENTER.lat,
-    lng: initialCoordinates?.lng ?? initialDemoCoordinates?.lng ?? DEFAULT_CENTER.lng,
+    lat: initialCoordinates?.lat ?? DEFAULT_CENTER.lat,
+    lng: initialCoordinates?.lng ?? DEFAULT_CENTER.lng,
     radiusM: initialRadiusM,
     limit: DEFAULT_LIMIT,
     functions: [],
     open247: false,
     easyAccess: false,
     minScore: 0,
-    demo: initialDemoMode,
   });
 
   const searchUrl = useMemo(
@@ -106,11 +92,8 @@ export function LockerPulseApp({
       params.set("lng", String(filters.lng));
       params.set("radius_m", String(filters.radiusM));
     }
-    if (demoMode) {
-      params.set("demo", "true");
-    }
     return params;
-  }, [address, demoMode, filters.lat, filters.lng, filters.radiusM, hasLocation]);
+  }, [address, filters.lat, filters.lng, filters.radiusM, hasLocation]);
 
   const applyAddressResult = useCallback((
     result: GeocodeSuggestion,
@@ -125,7 +108,6 @@ export function LockerPulseApp({
       ...current,
       lat: result.coordinates.lat,
       lng: result.coordinates.lng,
-      demo: demoMode,
     }));
 
     const params = new URLSearchParams({
@@ -134,17 +116,13 @@ export function LockerPulseApp({
       lng: String(result.coordinates.lng),
       radius_m: String(nextRadiusM),
     });
-    if (demoMode) {
-      params.set("demo", "true");
-    }
-
     const nextUrl = `/app?${params.toString()}`;
     if (mode === "push") {
       router.push(nextUrl);
       return;
     }
     router.replace(nextUrl);
-  }, [demoMode, filters.radiusM, router]);
+  }, [filters.radiusM, router]);
 
   const handleAddressChange = useCallback((value: string) => {
     setAddress(value);
@@ -194,53 +172,6 @@ export function LockerPulseApp({
       setIsGeocoding(false);
     }
   }
-
-  const toggleDemoMode = useCallback((next: boolean) => {
-    writePersistedDemoMode(next);
-    setDemoMode(next);
-    setSelectedId(null);
-
-    if (next) {
-      const nextFilters = {
-        ...filters,
-        lat: hasLocation ? filters.lat : DEMO_SEARCH.lat,
-        lng: hasLocation ? filters.lng : DEMO_SEARCH.lng,
-        radiusM: hasLocation ? filters.radiusM : DEMO_SEARCH.radiusM,
-        demo: true,
-      };
-      setFilters(nextFilters);
-      if (!hasLocation) {
-        setAddress(DEMO_SEARCH.query);
-        setResolvedAddress(DEMO_SEARCH.query);
-        setHasLocation(true);
-      }
-
-      const params = new URLSearchParams({
-        q: hasLocation ? address.trim() || DEMO_SEARCH.query : DEMO_SEARCH.query,
-        lat: String(nextFilters.lat),
-        lng: String(nextFilters.lng),
-        radius_m: String(nextFilters.radiusM),
-        demo: "true",
-      });
-      router.push(`/app?${params.toString()}`);
-      return;
-    }
-
-    const nextFilters = { ...filters, demo: false };
-    setFilters(nextFilters);
-    const params = new URLSearchParams();
-    const query = address.trim();
-    if (query) {
-      params.set("q", query);
-    }
-    if (hasLocation) {
-      params.set("lat", String(nextFilters.lat));
-      params.set("lng", String(nextFilters.lng));
-      params.set("radius_m", String(nextFilters.radiusM));
-    }
-    const suffix = params.toString();
-    router.push(suffix ? `/app?${suffix}` : "/app");
-  }, [address, filters, hasLocation, router]);
 
   useEffect(() => {
     const query = address.trim();
@@ -294,23 +225,6 @@ export function LockerPulseApp({
     };
   }, [address, applyAddressResult]);
 
-  useEffect(() => {
-    if (hasRestoredPersistedDemoMode.current) {
-      return;
-    }
-    hasRestoredPersistedDemoMode.current = true;
-
-    if (initialDemoMode) {
-      writePersistedDemoMode(true);
-      return;
-    }
-
-    if (readPersistedDemoMode()) {
-      const timer = window.setTimeout(() => toggleDemoMode(true), 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [initialDemoMode, toggleDemoMode]);
-
   return (
     <main className="min-h-screen bg-[#f4f4f2] text-[#1d1d1b]">
       <header className="border-b border-black/10 bg-white">
@@ -322,7 +236,6 @@ export function LockerPulseApp({
             <span className="text-lg font-black tracking-normal">LockerPulse</span>
           </Link>
           <div className="flex items-center gap-2">
-            <DemoModeSwitch enabled={demoMode} onChange={toggleDemoMode} />
             <span className="rounded-full border border-black/10 bg-[#ffd200] px-3 py-1 text-xs font-bold uppercase text-[#1d1d1b]">
               Beta
             </span>
@@ -344,7 +257,6 @@ export function LockerPulseApp({
           onSearchAddress={searchAddress}
           onSelectSuggestion={selectSuggestion}
           onSuggestionsOpenChange={setSuggestionsOpen}
-          demoMode={demoMode}
         />
 
         {!hasLocation ? <EmptyState /> : null}
@@ -359,7 +271,6 @@ export function LockerPulseApp({
               returnParams={returnParams}
               selectedId={selectedPoint?.id ?? null}
               radiusM={filters.radiusM}
-              demoMode={demoMode}
               onSelect={setSelectedId}
             />
 
@@ -413,7 +324,6 @@ function SearchHero({
   onSearchAddress,
   onSelectSuggestion,
   onSuggestionsOpenChange,
-  demoMode,
 }: {
   address: string;
   addressError: string | null;
@@ -427,7 +337,6 @@ function SearchHero({
   onSearchAddress: () => void;
   onSelectSuggestion: (suggestion: GeocodeSuggestion) => void;
   onSuggestionsOpenChange: (open: boolean) => void;
-  demoMode: boolean;
 }) {
   return (
     <section className="rounded-xl border border-black/10 bg-white p-5 shadow-sm sm:p-7 lg:p-9">
@@ -517,10 +426,6 @@ function SearchHero({
       <div className="mt-3 min-h-6">
         {addressError ? (
           <p className="text-sm font-semibold text-red-700">{addressError}</p>
-        ) : demoMode ? (
-          <p className="line-clamp-1 text-sm font-bold text-[#1d1d1b]">
-            Tryb demo jest włączony. Wyniki mogą zawierać lokalne dane przykładowe.
-          </p>
         ) : resolvedAddress ? (
           <p className="line-clamp-1 text-sm font-medium text-[#5f5f5b]">
             Wyniki dla: {resolvedAddress}
@@ -554,7 +459,6 @@ function PointResults({
   returnParams,
   selectedId,
   radiusM,
-  demoMode,
   onSelect,
 }: {
   points: PointSummary[];
@@ -564,7 +468,6 @@ function PointResults({
   returnParams: URLSearchParams;
   selectedId: string | null;
   radiusM: number;
-  demoMode: boolean;
   onSelect: (id: string) => void;
 }) {
   if (error) {
@@ -594,12 +497,6 @@ function PointResults({
         <div className="mb-3 rounded-xl border border-[#ffd200] bg-[#fff6bf] p-4 text-sm font-semibold leading-6 text-[#1d1d1b]">
           <p className="font-black">{alert.title}</p>
           <p className="mt-1">{alert.message}</p>
-        </div>
-      ) : null}
-
-      {demoMode ? (
-        <div className="mb-3 rounded-xl border border-black/10 bg-white p-4 text-sm font-semibold leading-6 text-[#5f5f5b]">
-          Tryb demo: obok realnych wyników mogą pojawić się przykładowe Paczkomaty z lokalnego seeda.
         </div>
       ) : null}
 

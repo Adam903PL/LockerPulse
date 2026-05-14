@@ -35,10 +35,6 @@ export function buildSearchUrl(filters: SearchFilters) {
   if (filters.easyAccess) {
     params.set("easy_access", "true");
   }
-  if (filters.demo) {
-    params.set("demo", "true");
-  }
-
   return `${API_BASE_URL}/api/v1/points/search?${params.toString()}`;
 }
 
@@ -54,7 +50,7 @@ export async function fetchPointSearch(url: string): Promise<PointSearchResponse
 export function buildPointUrl(
   country: string,
   name: string,
-  context?: { lat?: string; lng?: string; radiusM?: number; demo?: boolean },
+  context?: { lat?: string; lng?: string; radiusM?: number },
 ) {
   const params = new URLSearchParams();
   if (context?.lat && context.lng) {
@@ -62,10 +58,6 @@ export function buildPointUrl(
     params.set("lng", context.lng);
     params.set("radius_m", String(context.radiusM ?? 3000));
   }
-  if (context?.demo) {
-    params.set("demo", "true");
-  }
-
   const suffix = params.toString();
   return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}${suffix ? `?${suffix}` : ""}`;
 }
@@ -79,11 +71,8 @@ export async function fetchPointDetails(url: string): Promise<PointSummary> {
   return response.json();
 }
 
-export function buildPointHistoryUrl(country: string, name: string, days = 7, demo = false) {
+export function buildPointHistoryUrl(country: string, name: string, days = 7) {
   const params = new URLSearchParams({ days: String(days) });
-  if (demo) {
-    params.set("demo", "true");
-  }
   return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}/history?${params.toString()}`;
 }
 
@@ -99,7 +88,7 @@ export async function fetchPointHistory(url: string): Promise<PointHistoryRespon
 export function buildPointAlternativesUrl(
   country: string,
   name: string,
-  context: { lat: string; lng: string; radiusM?: number; limit?: number; demo?: boolean },
+  context: { lat: string; lng: string; radiusM?: number; limit?: number },
 ) {
   const params = new URLSearchParams({
     lat: context.lat,
@@ -107,9 +96,6 @@ export function buildPointAlternativesUrl(
     radius_m: String(context.radiusM ?? 3000),
     limit: String(context.limit ?? 3),
   });
-  if (context.demo) {
-    params.set("demo", "true");
-  }
   return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}/alternatives?${params.toString()}`;
 }
 
@@ -122,21 +108,13 @@ export async function fetchPointAlternatives(url: string): Promise<PointAlternat
   return response.json();
 }
 
-export function buildReportSummaryUrl(country: string, name: string, days = 7, demo = false) {
+export function buildReportSummaryUrl(country: string, name: string, days = 7) {
   const params = new URLSearchParams({ days: String(days) });
-  if (demo) {
-    params.set("demo", "true");
-  }
   return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}/reports/summary?${params.toString()}`;
 }
 
-export function buildCreateReportUrl(country: string, name: string, demo = false) {
-  const params = new URLSearchParams();
-  if (demo) {
-    params.set("demo", "true");
-  }
-  const suffix = params.toString();
-  return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}/reports${suffix ? `?${suffix}` : ""}`;
+export function buildCreateReportUrl(country: string, name: string) {
+  return `${API_BASE_URL}/api/v1/points/${encodeURIComponent(country)}/${encodeURIComponent(name)}/reports`;
 }
 
 export function buildReportAnalysisUrl(reportId: string) {
@@ -156,9 +134,8 @@ export async function createUserReport(
   country: string,
   name: string,
   payload: UserReportCreate,
-  demo = false,
 ): Promise<UserReportResponse> {
-  const response = await fetch(buildCreateReportUrl(country, name, demo), {
+  const response = await fetch(buildCreateReportUrl(country, name), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -195,9 +172,8 @@ export async function fetchGeocodeSuggestions(
   return response.json();
 }
 
-export function buildAdminReportsUrl(options?: { includeDemo?: boolean; limit?: number }) {
+export function buildAdminReportsUrl(options?: { limit?: number }) {
   const params = new URLSearchParams({
-    include_demo: String(options?.includeDemo ?? true),
     limit: String(options?.limit ?? 100),
   });
   return `${API_BASE_URL}/api/v1/admin/reports?${params.toString()}`;

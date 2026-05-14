@@ -21,7 +21,6 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 export function AdminReportsPanel() {
-  const [includeDemo, setIncludeDemo] = useState(true);
   const [token, setToken] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -31,10 +30,7 @@ export function AdminReportsPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const reportsUrl = useMemo(
-    () => buildAdminReportsUrl({ includeDemo, limit: 200 }),
-    [includeDemo],
-  );
+  const reportsUrl = useMemo(() => buildAdminReportsUrl({ limit: 200 }), []);
   const { data, error, isLoading, mutate } = useSWR(
     [reportsUrl, token],
     fetchAdminReports,
@@ -107,15 +103,6 @@ export function AdminReportsPanel() {
                 <RefreshCw className="h-4 w-4" />
                 Odśwież
               </button>
-              <label className="inline-flex h-11 items-center gap-2 rounded-md border border-black/10 bg-white px-3 text-sm font-black">
-                <input
-                  type="checkbox"
-                  checked={includeDemo}
-                  onChange={(event) => setIncludeDemo(event.target.checked)}
-                  className="h-4 w-4 accent-[#ffd200]"
-                />
-                Demo
-              </label>
             </div>
           </div>
 
@@ -188,10 +175,7 @@ function ReportCard({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/points/${report.country}/${report.name}${report.is_demo ? "?demo=true" : ""}`}
-              className="text-xl font-black hover:underline"
-            >
+            <Link href={`/points/${report.country}/${report.name}`} className="text-xl font-black hover:underline">
               {report.name}
             </Link>
             <span className="rounded-full border border-black/10 bg-[#ffd200] px-2.5 py-1 text-xs font-black">
@@ -200,11 +184,6 @@ function ReportCard({
             <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", statusClass(report.analysis_status))}>
               {analysisLabel(report.analysis_status, report.analysis)}
             </span>
-            {report.is_demo ? (
-              <span className="rounded-full border border-[#ffd200] bg-[#fff6bf] px-2.5 py-1 text-xs font-black">
-                Demo
-              </span>
-            ) : null}
           </div>
 
           <p className="mt-2 text-sm font-semibold text-[#5f5f5b]">

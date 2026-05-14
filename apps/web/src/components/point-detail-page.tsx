@@ -47,7 +47,6 @@ import type {
 } from "@/types/points";
 import { MapShell } from "./map-shell";
 import { ScoreBadge } from "./score-badge";
-import { DemoModeSwitch } from "./demo-mode-switch";
 
 type PointDetailPageProps = {
   country: string;
@@ -56,7 +55,6 @@ type PointDetailPageProps = {
   returnLat?: string;
   returnLng?: string;
   returnRadiusM?: number;
-  demoMode?: boolean;
 };
 
 const MAX_REPORT_PHOTOS = 3;
@@ -74,10 +72,9 @@ export function PointDetailPage({
   returnLat,
   returnLng,
   returnRadiusM = 3000,
-  demoMode = false,
 }: PointDetailPageProps) {
   const { data, error, isLoading, mutate: mutatePoint } = useSWR(
-    buildPointUrl(country, name, { lat: returnLat, lng: returnLng, radiusM: returnRadiusM, demo: demoMode }),
+    buildPointUrl(country, name, { lat: returnLat, lng: returnLng, radiusM: returnRadiusM }),
     fetchPointDetails,
     { revalidateOnFocus: false },
   );
@@ -85,7 +82,7 @@ export function PointDetailPage({
     data: history,
     error: historyError,
     isLoading: historyLoading,
-  } = useSWR(buildPointHistoryUrl(country, name, 7, demoMode), fetchPointHistory, {
+  } = useSWR(buildPointHistoryUrl(country, name, 7), fetchPointHistory, {
     revalidateOnFocus: false,
   });
   const alternativesUrl =
@@ -95,7 +92,6 @@ export function PointDetailPage({
           lng: returnLng,
           radiusM: returnRadiusM,
           limit: 3,
-          demo: demoMode,
         })
       : null;
   const {
@@ -106,10 +102,10 @@ export function PointDetailPage({
   } = useSWR(alternativesUrl, fetchPointAlternatives, {
     revalidateOnFocus: false,
   });
-  const backHref = buildBackHref(returnQuery, returnLat, returnLng, returnRadiusM, demoMode);
+  const backHref = buildBackHref(returnQuery, returnLat, returnLng, returnRadiusM);
 
   async function submitReport(payload: UserReportCreate): Promise<UserReportResponse> {
-    const result = await createUserReport(country, name, payload, demoMode);
+    const result = await createUserReport(country, name, payload);
     await Promise.all([mutatePoint(), mutateAlternatives()]);
     return result;
   }
@@ -125,7 +121,6 @@ export function PointDetailPage({
             <span className="text-lg font-black">LockerPulse</span>
           </Link>
           <div className="flex items-center gap-2">
-            <DemoModeSwitch enabled={demoMode} compact />
             <Link
               href={backHref}
               className="inline-flex items-center gap-2 rounded-md border border-black/10 bg-white px-3 py-2 text-sm font-black hover:bg-[#ffd200]"
@@ -153,7 +148,6 @@ export function PointDetailPage({
             returnLat={returnLat}
             returnLng={returnLng}
             returnRadiusM={returnRadiusM}
-            demoMode={demoMode}
             onSubmitReport={submitReport}
           />
         ) : null}
@@ -174,7 +168,6 @@ function DetailContent({
   returnLat,
   returnLng,
   returnRadiusM,
-  demoMode,
   onSubmitReport,
 }: {
   point: PointSummary;
@@ -188,7 +181,6 @@ function DetailContent({
   returnLat?: string;
   returnLng?: string;
   returnRadiusM?: number;
-  demoMode: boolean;
   onSubmitReport: (payload: UserReportCreate) => Promise<UserReportResponse>;
 }) {
   return (
@@ -224,7 +216,6 @@ function DetailContent({
           returnLat={returnLat}
           returnLng={returnLng}
           returnRadiusM={returnRadiusM}
-          demoMode={demoMode}
           onSubmitReport={onSubmitReport}
         />
 
@@ -309,7 +300,6 @@ function AdviceSection({
   returnLat,
   returnLng,
   returnRadiusM,
-  demoMode,
   onSubmitReport,
 }: {
   point: PointSummary;
@@ -321,7 +311,6 @@ function AdviceSection({
   returnLat?: string;
   returnLng?: string;
   returnRadiusM?: number;
-  demoMode: boolean;
   onSubmitReport: (payload: UserReportCreate) => Promise<UserReportResponse>;
 }) {
   const risk = alternatives?.risk ?? point.risk;
@@ -360,9 +349,6 @@ function AdviceSection({
         <p className="mt-1 text-sm font-semibold leading-6 text-[#5f5f5b]">
           {reportSummary?.message ?? "Nie ma świeżych zgłoszeń problemu dla tego punktu."}
         </p>
-        {reportSummary?.has_demo_data ? (
-          <p className="mt-2 text-xs font-black text-[#1d1d1b]">Dane zgłoszeń są przykładowe.</p>
-        ) : null}
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <DetailMetric label="Problem score 24h" value={`${reportSummary?.problem_score_24h ?? 0}/100`} />
           <DetailMetric label="Kara zgłoszeń" value={`-${reportSummary?.community_penalty ?? 0} pkt`} />
@@ -441,7 +427,7 @@ function AdviceSection({
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
             <ScoreBadge score={best.score} grade={best.grade} compact />
             <Link
-              href={buildPointContextHref(best, returnQuery, returnLat, returnLng, returnRadiusM, demoMode)}
+              href={buildPointContextHref(best, returnQuery, returnLat, returnLng, returnRadiusM)}
               className="inline-flex h-10 items-center justify-center rounded-md border border-black/10 bg-white px-3 text-sm font-black hover:bg-[#ffd200]"
             >
               Szczegóły
@@ -741,13 +727,6 @@ function ReliabilitySection({
         </span>
       </div>
 
-      {history?.is_demo ? (
-        <div className="mt-5 rounded-lg border border-[#ffd200] bg-[#fff6bf] p-4 text-sm font-semibold leading-6 text-[#1d1d1b]">
-          <strong>Dane przykładowe.</strong>{" "}
-          {history.demo_note ?? "Ten zestaw służy tylko do pokazania, jak działa panel Niezawodność."}
-        </div>
-      ) : null}
-
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <DetailMetric label="Pomiary" value={String(reliability.snapshot_count)} />
         <DetailMetric label="Uptime" value={formatUptime(reliability.uptime_ratio)} />
@@ -856,7 +835,7 @@ function DetailError({ message }: { message: string }) {
   );
 }
 
-function buildBackHref(query?: string, lat?: string, lng?: string, radiusM?: number, demoMode = false) {
+function buildBackHref(query?: string, lat?: string, lng?: string, radiusM?: number) {
   const params = new URLSearchParams();
   if (query) {
     params.set("q", query);
@@ -867,9 +846,6 @@ function buildBackHref(query?: string, lat?: string, lng?: string, radiusM?: num
   }
   if (radiusM) {
     params.set("radius_m", String(radiusM));
-  }
-  if (demoMode) {
-    params.set("demo", "true");
   }
   const suffix = params.toString();
   return suffix ? `/app?${suffix}` : "/app";
@@ -881,7 +857,6 @@ function buildPointContextHref(
   lat?: string,
   lng?: string,
   radiusM?: number,
-  demoMode = false,
 ) {
   const params = new URLSearchParams();
   if (query) {
@@ -893,9 +868,6 @@ function buildPointContextHref(
   }
   if (radiusM) {
     params.set("radius_m", String(radiusM));
-  }
-  if (demoMode) {
-    params.set("demo", "true");
   }
   const suffix = params.toString();
   return `/points/${point.country}/${point.name}${suffix ? `?${suffix}` : ""}`;

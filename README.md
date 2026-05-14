@@ -1,48 +1,60 @@
 # LockerPulse
 
-LockerPulse is a focused take on the InPost internship assignment: a smart finder that helps users choose the best nearby InPost point, not just the nearest one.
+LockerPulse is a customer-first InPost point finder built for the InPost Software Development Internship assignment.
 
-The app queries the live InPost Global Points API, ranks nearby parcel lockers with an explainable score, stores local reliability history, accepts anonymous problem reports, and can optionally triage those reports with a local or cloud model.
+The idea is simple: when a user has a few parcel lockers nearby, the nearest one is not always the best one. LockerPulse uses the live InPost Global Points API, local reliability history, anonymous user reports, and optional AI triage to answer a more useful question:
 
-## What I built
+> Which Paczkomat is the safest choice today?
 
-The core problem I chose:
+## Live Project
 
-> When several InPost points are nearby, distance alone is not enough. A better choice also depends on operating status, 24/7 availability, accessibility, supported actions, reliability history, and fresh user reports.
+- Landing page: [https://lockerpulse-web-production.up.railway.app](https://lockerpulse-web-production.up.railway.app)
+- Customer app: [https://lockerpulse-web-production.up.railway.app/app](https://lockerpulse-web-production.up.railway.app/app)
+- API health: [https://lockerpulse-api-production.up.railway.app/health](https://lockerpulse-api-production.up.railway.app/health)
+- API docs: [https://lockerpulse-api-production.up.railway.app/docs](https://lockerpulse-api-production.up.railway.app/docs)
 
-LockerPulse provides:
+The old static screenshot was removed from the README because the UI changed significantly. The live links above are the source of truth for the current product experience.
 
-- nearby search using `relative_point` and `max_distance`,
-- address lookup through a backend geocoding endpoint,
+## What It Does
+
+LockerPulse is not a clone of the InPost website and not an official InPost status system. It is an extra decision layer built on top of public point data.
+
+Current features:
+
+- address search with realtime suggestions,
+- live nearby Paczkomat search from the InPost API,
+- adjustable search radius,
+- simple ranked customer list with map context,
+- detail page for each point,
 - explainable `LockerPulse Score` from 0 to 100,
-- a simple customer-facing search flow with adjustable radius,
-- ranking list and Leaflet map,
-- point details with image, address, score reasons, warnings, and supported functions,
-- historical snapshots collected into Postgres,
-- reliability labels based on recent status history,
-- customer-facing risk alerts and nearby alternatives,
-- anonymous user problem reports that influence risk advice,
-- provider-agnostic report triage that works with rules only, local models, or cloud models,
-- a standalone collector that can run once or in a loop,
-- API exploration notes generated from real InPost API responses.
+- local status snapshots stored in Postgres,
+- reliability labels based on collected history,
+- anonymous problem reports with required comment and optional photos,
+- admin panel for viewing and deleting reports,
+- risk advice: `ok`, `watch`, `risky`, `critical`,
+- Plan B recommendations when a point looks risky,
+- report triage that works with no model, local Ollama, or cloud models through LiteLLM.
 
-## Tech stack
+There is no demo-data switch anymore. Search results come from the live InPost API. Local history and reports appear only after the collector runs or users submit reports.
 
-- Monorepo: npm workspaces
-- Frontend: Next.js App Router, TypeScript, Tailwind CSS, SWR, Leaflet
-- Backend: FastAPI, Pydantic, httpx, LiteLLM
-- Database: Postgres + Prisma Client Python
-- Tooling: uv for Python dependencies, Docker Compose for Postgres
-- Deployment target: Railway with separate API and web services
+## Product Flow
 
-## Project structure
+1. User enters an address.
+2. Backend geocodes the address.
+3. Backend searches InPost points around the coordinates.
+4. Each point receives a transparent score.
+5. The UI shows a short ranked list: point name, street, distance, status, score.
+6. The detail page explains why the score is high or low.
+7. If reports or history suggest risk, LockerPulse recommends a better nearby Plan B.
+
+## Architecture
 
 ```txt
 apps/
-  api/        FastAPI backend
-  web/        Next.js frontend
+  api/        FastAPI backend, collectors, scoring, triage
+  web/        Next.js App Router frontend
 packages/
-  database/   Prisma schema
+  database/   Prisma schema shared by backend commands
 docs/
   api-exploration.md
   decisions.md
@@ -55,7 +67,232 @@ scripts/
   explore_inpost_api.py
 ```
 
-## Running locally
+Stack:
+
+- Frontend: Next.js App Router, TypeScript, Tailwind CSS, SWR, Leaflet
+- Backend: FastAPI, Pydantic, httpx, LiteLLM
+- Database: Postgres + Prisma Client Python
+- Local tooling: npm workspaces, uv, Docker Compose
+- Deployment: Railway, separate API and web services
+
+Important source files:
+
+- Base scoring: [`apps/api/src/locker_pulse_api/services/scoring.py`](apps/api/src/locker_pulse_api/services/scoring.py)
+- Score composition and final score: [`apps/api/src/locker_pulse_api/services/point_service.py`](apps/api/src/locker_pulse_api/services/point_service.py)
+- Reliability scoring: [`apps/api/src/locker_pulse_api/services/reliability.py`](apps/api/src/locker_pulse_api/services/reliability.py)
+- Report penalties: [`apps/api/src/locker_pulse_api/services/reports.py`](apps/api/src/locker_pulse_api/services/reports.py)
+- Triage engines: [`apps/api/src/locker_pulse_api/services/report_triage_engines.py`](apps/api/src/locker_pulse_api/services/report_triage_engines.py)
+- AI agent prompt: [`apps/api/prompts/report_triage_agent.md`](apps/api/prompts/report_triage_agent.md)
+
+## Scoring Deep Dive
+
+The visible score is a final customer score, not just a raw API score.
+
+```txt
+raw_live_score = status + distance + 24/7 + accessibility + functions + hardware + data_quality
+base_score = status_cap(raw_live_score + history_adjustment)
+community_penalty = fresh saved report-analysis penalties from last 24h, capped at 35
+final_score = status_cap(base_score - community_penalty)
+```
+
+`PointSummary.score` returned by the API is the final score. The API also exposes helper fields such as `base_score`, `community_penalty`, `problem_score_24h`, `reasons`, `warnings`, and `problem_reasons`.
+
+### Base Live Score
+
+| Signal | Points | Why it matters |
+| --- | ---: | --- |
+| Current status is `Operating` | `+35` | A point that is not operating should never look like a great choice. |
+| Distance inside selected radius | `0-20` | Closer is better, but distance is not the whole decision. |
+| `location_247=true` | `+15` | 24/7 access is valuable for normal customers. |
+| `easy_access_zone=true` | `+10` | Easier access means fewer surprises on arrival. |
+| Required functions supported | `+10` | If user needs collect/send, the point should support it. |
+| Modern physical type: `next`, `newfm`, `modular` | `+5` | Newer devices are treated as a small positive signal. |
+| Public details are complete: image plus readable address/description | `+5` | Better data quality means more trust in the recommendation. |
+
+Distance is calculated proportionally:
+
+```txt
+distance_score = 20 * (1 - min(distance_m, radius_m) / radius_m)
+```
+
+So a point very close to the searched address can get almost `20`, while a point near the radius edge gets close to `0`.
+
+### Score Caps
+
+Status can cap the score after other positive signals:
+
+| Status | Max score |
+| --- | ---: |
+| `Operating` | no cap |
+| `Disabled` | `25` |
+| any other non-operating or unknown status, for example `Created` | `45` |
+
+This prevents a disabled point from looking good only because it is close or has nice metadata.
+
+### Grades
+
+| Score | Grade |
+| ---: | --- |
+| `90-100` | `excellent` |
+| `75-89` | `good` |
+| `60-74` | `fair` |
+| `40-59` | `weak` |
+| `0-39` | `critical` |
+
+### What Creates A High Score?
+
+A high score usually means:
+
+- the point is currently `Operating`,
+- it is close to the searched address,
+- it is available 24/7,
+- it has easy access,
+- it supports core parcel actions,
+- it has a modern physical type,
+- it has a readable address and image,
+- recent history is stable,
+- there are no fresh credible user reports.
+
+### What Creates A Low Score?
+
+A low score usually means one or more of these:
+
+- the point is `Disabled` or not yet fully active,
+- it is far away within the selected radius,
+- it is not marked as 24/7,
+- it is not marked as easy access,
+- supported functions are incomplete,
+- public details are incomplete,
+- history shows a recent problem or frequent status changes,
+- fresh user reports suggest a real issue.
+
+Important caveat: `locker_availability=NO_DATA` does not lower the score. API exploration showed that this field is often unavailable, so treating `NO_DATA` as a failure would create false negatives. LockerPulse displays it as a warning instead.
+
+## Reliability History
+
+The collector can fetch point data repeatedly and store `PointSnapshot` and `PointStatusEvent` rows in Postgres.
+
+Reliability is calculated from recent snapshots:
+
+| Label | Meaning | Score adjustment |
+| --- | --- | ---: |
+| `brak historii` | not enough snapshots | `0` |
+| `stabilny` | uptime at least `98%`, no status changes | `+3` |
+| `raczej stabilny` | uptime at least `90%`, max 2 status changes | `+1` |
+| `problem` | latest snapshot is not `Operating` | `-20` |
+| `niestabilny` | frequent changes or poor uptime | `-10` |
+
+No history is neutral. The app does not punish a point just because the local collector has not seen it enough times yet.
+
+## User Reports And Community Penalty
+
+Users can report a problem from the point detail page. A report includes:
+
+- reason: `not_working`, `full`, `screen_problem`, `access_problem`, `other`,
+- required comment, 10-500 characters,
+- optional photos, up to 3 images.
+
+Each report gets analyzed exactly once and the result is stored in `UserReportAnalysis`.
+
+Only stored analyses from the last 24 hours affect the current score. Search/detail endpoints do not call a model. They only read already saved analysis rows.
+
+Valid analyses are those with:
+
+- `status="ok"`,
+- `isActionable=true`,
+- `confidence >= 0.35`,
+- category not equal to `spam`,
+- `spamLikelihood < 0.8`.
+
+Penalty scale:
+
+| Analysis result | Penalty |
+| --- | ---: |
+| severity `<25`, low confidence, spam, high spam likelihood, or not actionable | `0` |
+| severity `25-45` | `5` |
+| severity `46-65` | `10` |
+| severity `66-85` | `20` |
+| severity `86-100` | `30` |
+
+Community penalty is currently:
+
+```txt
+community_penalty = min(35, sum(score_penalty for valid analyses from last 24h))
+```
+
+This makes the UI understandable: if admin sees a saved report penalty of `-5`, the detail page shows `-5` unless there are additional fresh valid reports.
+
+## AI Triage System
+
+The triage system is provider-agnostic:
+
+- no model configured: deterministic rules,
+- local model: Ollama through LiteLLM,
+- cloud model: OpenAI, Gemini, Anthropic, or another LiteLLM-supported provider,
+- model failure: rules fallback, not a broken report.
+
+The agent prompt lives here: [`apps/api/prompts/report_triage_agent.md`](apps/api/prompts/report_triage_agent.md).
+
+The agent role:
+
+> Evaluate an anonymous report about an InPost point and estimate customer-facing risk. Do not change official InPost status.
+
+The model receives:
+
+- report reason,
+- user comment,
+- optional photos if allowed,
+- point context,
+- current score,
+- reliability label,
+- recent report summary.
+
+The comment is treated as untrusted data. Prompt-injection attempts inside a report must be ignored.
+
+The model must return strict JSON:
+
+```json
+{
+  "severity": 0,
+  "confidence": 0.0,
+  "category": "unclear",
+  "is_actionable": true,
+  "spam_likelihood": 0.0,
+  "photo_evidence": "none",
+  "recommended_risk_floor": "none",
+  "score_penalty": 0,
+  "summary": "Krótki opis po polsku",
+  "evidence": ["konkretny powód decyzji"]
+}
+```
+
+The application validates the JSON with Pydantic and recomputes `score_penalty` itself. The model can recommend a penalty, but the backend owns the final penalty mapping.
+
+Severity guide:
+
+| Severity | Meaning |
+| ---: | --- |
+| `0-10` | spam, joke, unrelated, no real issue |
+| `11-25` | cosmetic or small inconvenience |
+| `26-45` | light issue worth a warning |
+| `46-65` | functional issue, point may be risky |
+| `66-85` | serious issue, recommend Plan B |
+| `86-100` | critical issue, likely unusable or safety-relevant |
+
+Rule fallback values:
+
+| Reason / signal | Severity | Confidence | Risk floor | Typical penalty |
+| --- | ---: | ---: | --- | ---: |
+| safety words like `kable`, `iskry`, `zagrożenie`, `pożar` | `90` | `0.86` | `critical` | `30` |
+| `not_working` | `78` | `0.78` | `risky` | `20` |
+| `full` | `64` | `0.74` | `risky` | `10` |
+| `screen_problem` | `58` | `0.72` | `risky` | `10` |
+| `access_problem` | `55` | `0.72` | `risky` | `10` |
+| `other` | `35` | `0.65` | `watch` | `5` |
+
+This means the application can run on Railway without Ollama or API keys. AI is an enhancement, not a hard dependency.
+
+## Running Locally
 
 Requirements:
 
@@ -64,9 +301,9 @@ Requirements:
 - Python 3.10+; Python 3.12 is recommended
 - uv
 - Docker
-- Optional: Ollama with `gemma3:4b` for local model-based report triage
+- Optional: Ollama with `gemma3:4b`
 
-Install dependencies and create the local env file:
+Install dependencies and create the env file:
 
 ```bash
 npm install
@@ -74,13 +311,13 @@ uv sync --project apps/api
 cp .env.example .env
 ```
 
-On Windows PowerShell, copy the env file with:
+PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Start Postgres, generate Prisma Client Python, and push the current schema:
+Start Postgres, generate Prisma Client Python, and push the schema:
 
 ```bash
 docker compose --env-file .env -f infra/compose.yaml up -d
@@ -88,19 +325,10 @@ npm run db:generate
 npm run db:push
 ```
 
-If port `5432` is already used locally, set both `POSTGRES_PORT` and the port inside `DATABASE_URL` in `.env` to another value, for example `5433`.
-
-Run the whole app:
+Run the full app:
 
 ```bash
 npm run dev
-```
-
-Or run services separately:
-
-```bash
-npm run dev:api
-npm run dev:web
 ```
 
 Open:
@@ -110,11 +338,19 @@ Open:
 - backend OpenAPI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - admin reports: [http://localhost:3000/admin](http://localhost:3000/admin)
 
-### Report triage modes
+## Triage Configuration
 
-The app works without any model. By default `REPORT_TRIAGE_MODEL=""` uses deterministic rules based on report category and comment keywords. This is the recommended production default for the first Railway deploy.
+Default production-safe mode:
 
-For local model-based triage, install Ollama, make sure the server is running, and pull Gemma 3 4B:
+```env
+REPORT_TRIAGE_PROVIDER="auto"
+REPORT_TRIAGE_MODEL=""
+REPORT_TRIAGE_API_BASE=""
+```
+
+This uses deterministic rules and needs no model.
+
+Local Ollama mode:
 
 ```bash
 ollama serve
@@ -122,17 +358,13 @@ ollama pull gemma3:4b
 ollama list
 ```
 
-Then set these values in `.env`:
-
 ```env
 REPORT_TRIAGE_PROVIDER="litellm"
 REPORT_TRIAGE_MODEL="ollama_chat/gemma3:4b"
 REPORT_TRIAGE_API_BASE="http://127.0.0.1:11434"
 ```
 
-If Ollama is already running as a background service, `ollama serve` may say the port is already in use. That is fine; verify with `ollama ps` or `ollama list`.
-
-Optional cloud model setup uses LiteLLM model names and provider env vars, for example:
+Cloud provider example:
 
 ```env
 REPORT_TRIAGE_PROVIDER="litellm"
@@ -140,15 +372,15 @@ REPORT_TRIAGE_MODEL="openai/gpt-4o-mini"
 OPENAI_API_KEY="..."
 ```
 
-API keys stay on the backend only. They are never stored in the frontend or entered by the user. Photos are not sent to cloud models unless `REPORT_TRIAGE_ALLOW_CLOUD_PHOTOS=true`.
+Provider keys stay on the backend only. They are never entered in the browser. Photos are not sent to cloud models unless `REPORT_TRIAGE_ALLOW_CLOUD_PHOTOS=true`.
 
-Analyze pending reports manually, for example after changing the triage provider:
+Analyze pending reports manually:
 
 ```bash
 npm run reports:analyze-pending
 ```
 
-### Collector
+## Collector
 
 Collect status history once:
 
@@ -156,46 +388,78 @@ Collect status history once:
 npm run collector:once
 ```
 
-Run the collector in a 30-minute loop:
+Run the collector in a loop:
 
 ```bash
 npm run collector:loop
 ```
 
-There is no demo data mode. Search results come from the live InPost API, while local history and reports appear only after the app collects or receives real data.
+The default collector uses a small watchlist so the project does not aggressively crawl the full InPost network.
 
-### Local troubleshooting
+## API Examples
 
-- Database connection fails: confirm Docker is running and `docker compose --env-file .env -f infra/compose.yaml ps` shows Postgres as healthy.
-- Port conflict on Postgres: change `POSTGRES_PORT` and the port in `DATABASE_URL`.
-- Frontend cannot reach API: check `NEXT_PUBLIC_API_BASE_URL` and restart `npm run dev:web`; this value is public and read by the browser.
-- CORS error in browser: make sure backend `WEB_ORIGIN` matches the frontend URL.
-- Admin API returns unauthorized: either leave `ADMIN_TOKEN=""` locally or send `X-Admin-Token`.
-- AI analysis does not use Ollama: check `REPORT_TRIAGE_MODEL`, `REPORT_TRIAGE_API_BASE`, `ollama list`, and `ollama ps`.
+Geocode an address:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/geocode?q=Dluga%201,%20Gdansk"
+```
+
+Search nearby points:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/points/search?lat=52.2297&lng=21.0122&radius_m=3000&functions=parcel_collect,parcel_send"
+```
+
+Get recent point history:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/points/PL/GDA65M/history?days=7"
+```
+
+Get safer alternatives:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/points/PL/GDA65M/alternatives?lat=54.3495&lng=18.6481&radius_m=3000"
+```
+
+Submit a report:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/points/PL/GDA65M/reports" \
+  -H "Content-Type: application/json" \
+  -d "{\"reason\":\"screen_problem\",\"comment\":\"Ekran nie reaguje na dotyk przez kilka prób.\"}"
+```
+
+Inspect stored analysis:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/reports/<report_id>/analysis"
+```
+
+Admin reports:
+
+```bash
+curl "http://127.0.0.1:8000/api/v1/admin/reports"
+curl -X DELETE "http://127.0.0.1:8000/api/v1/admin/reports/<report_id>"
+```
+
+If `ADMIN_TOKEN` is set, admin requests must include `X-Admin-Token`.
 
 ## Docker
 
-Build the backend image from the repository root:
+Build API:
 
 ```bash
 docker build -f infra/docker/api.Dockerfile -t lockerpulse-api .
 ```
 
-Run it with your local `.env`:
+Run API:
 
 ```bash
 docker run --rm --env-file .env -p 8000:8000 lockerpulse-api
 ```
 
-Build the frontend image. `NEXT_PUBLIC_API_BASE_URL` is a build-time value for Next.js:
-
-```powershell
-docker build -f infra/docker/web.Dockerfile `
-  --build-arg NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 `
-  -t lockerpulse-web .
-```
-
-On bash:
+Build web:
 
 ```bash
 docker build -f infra/docker/web.Dockerfile \
@@ -203,31 +467,21 @@ docker build -f infra/docker/web.Dockerfile \
   -t lockerpulse-web .
 ```
 
-Run the frontend:
+Run web:
 
 ```bash
 docker run --rm -p 3000:3000 lockerpulse-web
 ```
 
-## Deploying to Railway
+## Railway Deployment
 
-Recommended production shape:
+Production shape:
 
-- `lockerpulse-api`: FastAPI backend from `infra/docker/api.Dockerfile`
-- `lockerpulse-web`: Next.js frontend from `infra/docker/web.Dockerfile`
-- Railway PostgreSQL: database service with `DATABASE_URL` referenced by the API
+- `lockerpulse-api`: FastAPI from `infra/docker/api.Dockerfile`
+- `lockerpulse-web`: Next.js from `infra/docker/web.Dockerfile`
+- Postgres database
 
-Create the project from GitHub in Railway, add PostgreSQL, then create two app services from the same repository. In each service, set a custom Dockerfile path:
-
-```env
-# API service
-RAILWAY_DOCKERFILE_PATH="infra/docker/api.Dockerfile"
-
-# Web service
-RAILWAY_DOCKERFILE_PATH="infra/docker/web.Dockerfile"
-```
-
-API service variables:
+API variables:
 
 ```env
 DATABASE_URL="${{Postgres.DATABASE_URL}}"
@@ -243,170 +497,30 @@ REPORT_TRIAGE_ALLOW_CLOUD_PHOTOS="false"
 ADMIN_TOKEN="<strong-random-token>"
 ```
 
-Web service variables:
+Web variables:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL="https://<api-domain>"
 ```
 
-After Railway generates the web domain, update `WEB_ORIGIN` on the API service. After Railway generates the API domain, update `NEXT_PUBLIC_API_BASE_URL` on the web service and redeploy the web service because `NEXT_PUBLIC_*` values are baked into the Next.js build.
-
-For this small recruitment project, the API Docker image can push the Prisma schema at startup when `RUN_DB_PUSH_ON_START=true`. If you prefer Railway's dedicated pre-deploy step instead, leave that variable false and set this API pre-deploy command:
+Useful CLI commands:
 
 ```bash
-uv run --project apps/api prisma db push --schema packages/database/prisma/schema.prisma
-```
-
-The production deploy does not need Ollama. Report triage runs with deterministic rules unless you explicitly configure a LiteLLM provider and backend-only API key.
-
-Useful Railway CLI commands:
-
-```bash
-railway login
-railway whoami
-railway link
-railway status
-railway logs
-```
-
-If `railway` is not in PATH, use:
-
-```bash
-npx railway login
 npx railway whoami
 npx railway link
-npx railway status
-npx railway logs
+npx railway service status --service lockerpulse-api
+npx railway service status --service lockerpulse-web
+npx railway logs --service lockerpulse-api
+npx railway logs --service lockerpulse-web
 ```
 
-Railway references used for this setup:
+## Data Caveats
 
-- Monorepo services: [Railway monorepo deployments](https://docs.railway.com/deployments/monorepo)
-- Custom Dockerfile path: [Railway Dockerfiles](https://docs.railway.com/builds/dockerfiles)
-- Runtime port: [Railway public networking](https://docs.railway.com/public-networking)
-- Postgres `DATABASE_URL`: [Railway PostgreSQL](https://docs.railway.com/databases/postgresql)
-- Next.js public env vars: [Railway frontend environment variables](https://docs.railway.com/guides/frontend-environment-variables)
-
-## API examples
-
-Geocode an address:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/geocode?q=Dluga%201,%20Gdansk"
-```
-
-Search nearby points using coordinates returned by geocoding:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/points/search?lat=52.2297&lng=21.0122&radius_m=3000&functions=parcel_collect,parcel_send"
-```
-
-The response includes `score`, `grade`, `reasons`, and `warnings` for every point.
-
-Get recent point history:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/points/PL/GDA65M/history?days=7"
-```
-
-Get safer alternatives for a selected point:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/points/PL/SYZ01M/alternatives?lat=51.0808&lng=22.4416&radius_m=3000"
-```
-
-Submit an anonymous problem report:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/points/PL/SYZ01M/reports" \
-  -H "Content-Type: application/json" \
-  -d "{\"reason\":\"screen_problem\",\"comment\":\"Ekran nie reaguje na dotyk przez kilka prob.\"}"
-```
-
-The UI can attach up to 3 optional photos to a report. Locally they are stored as small image data URLs in Postgres JSON, which keeps the project self-contained without adding object storage.
-
-Inspect stored triage analysis for a report:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/reports/<report_id>/analysis"
-```
-
-List and delete reports from the simple admin API:
-
-```bash
-curl "http://127.0.0.1:8000/api/v1/admin/reports"
-curl -X DELETE "http://127.0.0.1:8000/api/v1/admin/reports/<report_id>"
-```
-
-If `ADMIN_TOKEN` is set in `.env`, admin requests must include `X-Admin-Token`.
-
-## Scoring model
-
-The first version is intentionally simple and explainable:
-
-- 35 points: `status` is `Operating`
-- 20 points: distance within the selected radius
-- 15 points: open 24/7
-- 10 points: Easy Access Zone
-- 10 points: required functions are supported
-- 5 points: modern physical type such as `next`, `newfm`, or `modular`
-- 5 points: public details are complete enough to trust the listing
-
-`locker_availability=NO_DATA` is shown as a warning, not as a failure. In early API exploration this field often returned `NO_DATA`, so treating it as an outage would create misleading recommendations.
-
-When history exists, the score can also receive a small reliability adjustment:
-
-- stable recent history can add a small bonus,
-- frequent changes or a recent non-operating status lower the score,
-- no history is neutral and never penalizes a point.
-
-Stage 4 adds a customer-facing risk label on top of the score. It classifies a point as `ok`, `watch`, `risky`, or `critical`, then uses that label to show a simple alert and recommend better nearby alternatives when useful.
-
-Stage 5 adds a community signal. Fresh user reports can raise the risk label and strengthen the Plan B recommendation, but they do not change the official InPost status.
-
-Stage 6/7 replaces the raw report-count penalty with saved report triage:
-
-- each report is analyzed once, either by deterministic rules or a configured LiteLLM model,
-- the analysis is stored in `UserReportAnalysis`,
-- search and detail pages only read stored analysis results,
-- if no model is configured, rules still produce severity, risk floor, and score penalty,
-- if the configured model fails, the backend stores a rules fallback result instead of blocking the report,
-- low-confidence or spam-like reports do not reduce the score,
-- useful reports receive a saved severity, confidence, risk floor, and score penalty.
-
-The final score is:
-
-```txt
-final_score = base_score_after_history - community_penalty_from_stored_triage_analyses
-```
-
-Only analyses from the last 24 hours affect the current score. The analysis of a single report stays immutable; the score naturally recovers when old reports leave the 24-hour window.
-
-## Data caveats
-
-This stage does not claim to know actual locker occupancy. The app uses the live API snapshot plus collected status history and exposes uncertainty when the source data is incomplete.
-User reports and triage are anonymous helper signals, not official InPost operational data. A model, when configured, never changes the official InPost status; it only estimates the risk of a user-reported problem.
-
-Still out of scope:
-
-- occupancy prediction,
-- user subscriptions,
-- PDF reports,
-- full Europe-wide crawling by default,
-- regional monitoring,
-- alert notifications.
-
-The collector starts with a small watchlist of city centers so the project demonstrates history without aggressively crawling the full InPost network.
-
-## API exploration
-
-Run:
-
-```bash
-npm run explore:api
-```
-
-This writes `docs/api-exploration.md` using live API data.
+- LockerPulse does not know real-time compartment occupancy.
+- User reports are anonymous helper signals, not official InPost data.
+- AI triage never changes the official InPost status.
+- `NO_DATA` in `locker_availability` is shown as uncertainty, not treated as a failure.
+- Full Europe-wide crawling, subscriptions, notifications, and PDF reports are intentionally out of scope.
 
 ## Testing
 
@@ -416,12 +530,25 @@ Backend tests:
 uv run --project apps/api pytest
 ```
 
-Full project check:
+Frontend checks:
+
+```bash
+npm run lint --workspace apps/web
+npm run build --workspace apps/web
+```
+
+Full check:
 
 ```bash
 npm test
 ```
 
-## Screenshots
+## API Exploration
 
-![LockerPulse Smart Finder screenshot](docs/screenshots/locker-pulse-home.png)
+Run:
+
+```bash
+npm run explore:api
+```
+
+This writes [`docs/api-exploration.md`](docs/api-exploration.md) using live InPost API data.

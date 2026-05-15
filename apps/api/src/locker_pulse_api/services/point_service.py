@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from math import atan2, cos, radians, sin, sqrt
 from time import perf_counter
 from typing import Any
@@ -23,6 +24,8 @@ from locker_pulse_api.services.advice import (
 from locker_pulse_api.services.reliability import ReliabilityService, reliability_adjustment
 from locker_pulse_api.services.reports import ReportService
 from locker_pulse_api.services.scoring import NO_DATA_WARNING, grade_for_score, score_point
+
+logger = logging.getLogger(__name__)
 
 
 class PointService:
@@ -59,7 +62,7 @@ class PointService:
             )
             upstream_count = payload.get("count")
             raw_items = payload.get("items") or []
-            await self._point_repository.save_points(
+            await self._safe_save_points(
                 raw_items,
                 record_snapshots=True,
                 radius_m=radius_m,
@@ -83,7 +86,7 @@ class PointService:
             alerts = build_search_alerts(ranked_items)
 
             duration_ms = round((perf_counter() - started) * 1000)
-            await self._point_repository.log_search(
+            await self._safe_log_search(
                 lat=lat,
                 lng=lng,
                 radius_m=radius_m,
@@ -116,7 +119,7 @@ class PointService:
             )
         except InPostApiError as exc:
             duration_ms = round((perf_counter() - started) * 1000)
-            await self._point_repository.log_search(
+            await self._safe_log_search(
                 lat=lat,
                 lng=lng,
                 radius_m=radius_m,
@@ -140,7 +143,12 @@ class PointService:
         lng: float | None = None,
         radius_m: int = 50_000,
     ) -> PointSummary:
-        cached_point = await self._point_repository.get_point_record(country=country, name=name)
+        try:
+            cached_point = await self._point_repository.get_point_record(country=country, name=name)
+        except Exception as exc:
+            logger.warning("Point cache read failed for %s:%s: %s", country, name, exc)
+            cached_point = None
+
         if cached_point is not None and not _is_legacy_seeded_point(cached_point):
             return await self._summary_from_cached_record(
                 cached_point,
@@ -156,13 +164,13 @@ class PointService:
 
         if lat is not None and lng is not None:
             point = {**point, "distance": _distance_from_reference(point, lat=lat, lng=lng)}
-        await self._point_repository.save_points(
+        await self._safe_save_points(
             [point],
             record_snapshots=True,
             radius_m=radius_m,
         )
         summary = _to_point_summary(point, functions=[], radius_m=radius_m)
-        return await self._apply_reliability_to_item(summary)
+        return await self._safe_apply_reliability_to_item(summary)
 
     async def get_alternatives(
         self,
@@ -213,10 +221,21 @@ class PointService:
         summary = _to_point_summary(point, functions=[], radius_m=radius_m)
         if not include_signals:
             return summary.model_copy(update={"risk": classify_point_risk(summary)})
-        return await self._apply_reliability_to_item(summary)
+        return await self._safe_apply_reliability_to_item(summary)
 
     async def _apply_reliability(self, items: list[PointSummary]) -> list[PointSummary]:
-        return list(await asyncio.gather(*(self._apply_reliability_to_item(item) for item in items)))
+        results = await asyncio.gather(
+            *(self._apply_reliability_to_item(item) for item in items),
+            return_exceptions=True,
+        )
+        safe_items: list[PointSummary] = []
+        for item, result in zip(items, results, strict=False):
+            if isinstance(result, Exception):
+                logger.warning("Point signal enrichment failed for %s: %s", item.id, result)
+                safe_items.append(item.model_copy(update={"risk": classify_point_risk(item)}))
+            else:
+                safe_items.append(result)
+        return safe_items
 
     async def _apply_reliability_to_item(self, item: PointSummary) -> PointSummary:
         reliability, report_summary = await asyncio.gather(
@@ -264,6 +283,13 @@ class PointService:
         )
         return updated.model_copy(update={"risk": classify_point_risk(updated)})
 
+    async def _safe_apply_reliability_to_item(self, item: PointSummary) -> PointSummary:
+        try:
+            return await self._apply_reliability_to_item(item)
+        except Exception as exc:
+            logger.warning("Point signal enrichment failed for %s: %s", item.id, exc)
+            return item.model_copy(update={"risk": classify_point_risk(item)})
+
     async def _alternative_candidates(
         self,
         *,
@@ -274,13 +300,17 @@ class PointService:
         limit: int,
     ) -> list[PointSummary]:
         candidate_map: dict[str, PointSummary] = {}
-        cached_records = await self._point_repository.get_points_near(
-            country=country,
-            lat=lat,
-            lng=lng,
-            radius_m=radius_m,
-            limit=max(limit, 24),
-        )
+        try:
+            cached_records = await self._point_repository.get_points_near(
+                country=country,
+                lat=lat,
+                lng=lng,
+                radius_m=radius_m,
+                limit=max(limit, 24),
+            )
+        except Exception as exc:
+            logger.warning("Point cache nearby lookup failed: %s", exc)
+            cached_records = []
         cached_records = sorted(
             cached_records,
             key=lambda record: _record_distance_m(record, lat=lat, lng=lng) or 10**9,
@@ -326,7 +356,7 @@ class PointService:
                 per_page=min(max(limit, 1), 100),
             )
             raw_items = payload.get("items") or []
-            await self._point_repository.save_points(
+            await self._safe_save_points(
                 raw_items,
                 record_snapshots=True,
                 radius_m=radius_m,
@@ -341,6 +371,18 @@ class PointService:
             pass
 
         return list(candidate_map.values())
+
+    async def _safe_save_points(self, points: list[dict[str, Any]], **kwargs: Any) -> None:
+        try:
+            await self._point_repository.save_points(points, **kwargs)
+        except Exception as exc:
+            logger.warning("Point cache write failed; serving live InPost data without cache: %s", exc)
+
+    async def _safe_log_search(self, **kwargs: Any) -> None:
+        try:
+            await self._point_repository.log_search(**kwargs)
+        except Exception as exc:
+            logger.warning("SearchRun log write failed: %s", exc)
 
 
 def _to_point_summary(

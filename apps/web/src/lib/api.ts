@@ -13,7 +13,7 @@ import type {
   UserReportResponse,
 } from "@/types/points";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE_URL = "/api/backend";
 
 export function buildSearchUrl(filters: SearchFilters) {
   const params = new URLSearchParams({
